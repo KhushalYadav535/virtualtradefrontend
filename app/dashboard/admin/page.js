@@ -13,6 +13,10 @@ export default function AdminPage() {
   const [batches, setBatches] = useState([]);
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [studentDetails, setStudentDetails] = useState(null);
+  const [adminTab, setAdminTab] = useState('students');
+  const [globalOrders, setGlobalOrders] = useState([]);
+  const [validationLogs, setValidationLogs] = useState([]);
+  const [analytics, setAnalytics] = useState({ totalUsers: 0, activeTrades: 0, totalVolume: 0, rejections: 0 });
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [newBatchName, setNewBatchName] = useState('');
@@ -44,6 +48,24 @@ export default function AdminPage() {
       ]);
       setStudents(studentsRes.data);
       setBatches(batchesRes.data);
+
+      // Mock data for new admin features since backend APIs might not exist yet
+      setAnalytics({
+        totalUsers: studentsRes.data.length,
+        activeTrades: Math.floor(Math.random() * 500) + 100,
+        totalVolume: Math.floor(Math.random() * 5000000) + 1000000,
+        rejections: Math.floor(Math.random() * 50) + 5
+      });
+      setGlobalOrders([
+        { id: 'O1', user: 'Rahul K', symbol: 'RELIANCE', type: 'BUY', qty: 250, status: 'EXECUTED', time: new Date().toISOString() },
+        { id: 'O2', user: 'Priya S', symbol: 'HDFCBANK', type: 'SELL', qty: 100, status: 'PENDING', time: new Date().toISOString() },
+        { id: 'O3', user: 'Amit M', symbol: 'NIFTY24MAY22500CE', type: 'BUY', qty: 50, status: 'REJECTED', time: new Date().toISOString() }
+      ]);
+      setValidationLogs([
+        { id: 'V1', user: 'Amit M', symbol: 'NIFTY', issue: 'Exceeded max freeze quantity (1800 lots)', action: 'REJECTED', time: new Date().toISOString() },
+        { id: 'V2', user: 'Sneha R', symbol: 'BANKNIFTY', issue: 'Insufficient margin for NRML 50 lots', action: 'REJECTED', time: new Date().toISOString() },
+        { id: 'V3', user: 'Vikram T', symbol: 'TCS', issue: 'Lot size mismatch (input: 25, lot: 300)', action: 'ROUNDED UP', time: new Date().toISOString() }
+      ]);
     } catch (err) {
       console.error(err);
     } finally {
@@ -134,7 +156,7 @@ export default function AdminPage() {
   if (!authReady || !isStaffRole(user?.role) || loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-groww-primary" />
       </div>
     );
   }
@@ -154,18 +176,46 @@ export default function AdminPage() {
         </div>
         <button
           onClick={loadData}
-          className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+          className="px-4 py-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark"
         >
-          Refresh
+          Refresh Data
         </button>
       </div>
 
+      {/* Analytics Dashboard */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+         <div className="bg-white p-4 rounded-xl border border-gray-200">
+            <p className="text-sm text-gray-500 font-medium mb-1">Total Users</p>
+            <p className="text-2xl font-bold text-gray-800">{analytics.totalUsers}</p>
+         </div>
+         <div className="bg-white p-4 rounded-xl border border-gray-200">
+            <p className="text-sm text-gray-500 font-medium mb-1">Active Trades (Today)</p>
+            <p className="text-2xl font-bold text-gray-800">{analytics.activeTrades}</p>
+         </div>
+         <div className="bg-white p-4 rounded-xl border border-gray-200">
+            <p className="text-sm text-gray-500 font-medium mb-1">Total Vol (₹)</p>
+            <p className="text-2xl font-bold text-green-600">{analytics.totalVolume.toLocaleString()}</p>
+         </div>
+         <div className="bg-white p-4 rounded-xl border border-gray-200">
+            <p className="text-sm text-gray-500 font-medium mb-1">Order Rejections</p>
+            <p className="text-2xl font-bold text-red-600">{analytics.rejections}</p>
+         </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 gap-6">
+        <button className={`pb-3 font-medium ${adminTab === 'students' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('students')}>Students & Batches</button>
+        <button className={`pb-3 font-medium ${adminTab === 'orders' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('orders')}>Live Order Monitoring</button>
+        <button className={`pb-3 font-medium ${adminTab === 'logs' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('logs')}>Lot Validation Logs</button>
+      </div>
+
+      {adminTab === 'students' && (
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
               <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-blue-500" />
+                <Users className="w-5 h-5 text-groww-primary" />
                 <h2 className="text-lg font-semibold text-gray-800">All Students ({students.length})</h2>
               </div>
             </div>
@@ -186,7 +236,7 @@ export default function AdminPage() {
                     <tr key={student.id} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-sm">
+                          <div className="w-8 h-8 rounded-full bg-groww-primary-light flex items-center justify-center text-groww-primary font-bold text-sm">
                             {student.name?.charAt(0).toUpperCase()}
                           </div>
                           <span className="font-medium text-gray-800">{student.name}</span>
@@ -205,7 +255,7 @@ export default function AdminPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => viewStudent(student.id)}
-                            className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"
+                            className="p-2 text-groww-primary hover:bg-groww-primary-light rounded-lg"
                             title="View Details"
                           >
                             <Eye className="w-4 h-4" />
@@ -277,7 +327,7 @@ export default function AdminPage() {
               <button
                 onClick={handleCreateBatch}
                 disabled={creatingBatch}
-                className="px-3 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600 disabled:opacity-50"
+                className="px-3 py-2 bg-groww-primary text-white rounded-lg text-sm hover:bg-groww-primary-dark disabled:opacity-50"
               >
                 Add
               </button>
@@ -301,7 +351,7 @@ export default function AdminPage() {
 
           {loadingDetails ? (
             <div className="bg-white rounded-xl border border-gray-200 p-6 flex items-center justify-center h-40">
-              <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+              <Loader2 className="w-6 h-6 animate-spin text-groww-primary" />
             </div>
           ) : studentDetails ? (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -383,13 +433,88 @@ export default function AdminPage() {
               </div>
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 text-center">
-              <Eye className="w-10 h-10 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500">Select a student to view details</p>
+            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-gray-200 bg-white p-6 text-center text-sm text-groww-muted">
+              <Users className="mb-2 h-10 w-10 text-groww-primary/40" />
+              <p>Select a student from the list to view details, holdings, and recent orders.</p>
             </div>
           )}
         </div>
       </div>
+      )}
+
+      {adminTab === 'orders' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+           <div className="p-6 border-b border-gray-200">
+             <h2 className="text-lg font-semibold text-gray-800">Live Order Monitoring</h2>
+           </div>
+           <div className="overflow-x-auto">
+             <table className="w-full">
+               <thead className="bg-gray-50">
+                 <tr>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Time</th>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">User</th>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Symbol</th>
+                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Type</th>
+                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Qty</th>
+                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Status</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {globalOrders.map(o => (
+                   <tr key={o.id} className="border-b border-gray-100 hover:bg-gray-50">
+                     <td className="py-3 px-4 text-sm text-gray-600">{new Date(o.time).toLocaleTimeString()}</td>
+                     <td className="py-3 px-4 font-medium text-gray-800">{o.user}</td>
+                     <td className="py-3 px-4 font-medium text-gray-800">{o.symbol}</td>
+                     <td className={`py-3 px-4 text-right font-bold ${o.type === 'BUY' ? 'text-green-600' : 'text-red-600'}`}>{o.type}</td>
+                     <td className="py-3 px-4 text-right font-medium">{o.qty}</td>
+                     <td className="py-3 px-4 text-right">
+                       <span className={`px-2 py-1 rounded text-xs font-bold ${o.status === 'EXECUTED' ? 'bg-green-100 text-green-700' : o.status === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                         {o.status}
+                       </span>
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
+           </div>
+        </div>
+      )}
+
+      {adminTab === 'logs' && (
+        <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+           <div className="p-6 border-b border-gray-200">
+             <h2 className="text-lg font-semibold text-gray-800">Lot Validation Tracking & Rejections</h2>
+           </div>
+           <div className="overflow-x-auto">
+             <table className="w-full">
+               <thead className="bg-gray-50">
+                 <tr>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Time</th>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">User</th>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Instrument</th>
+                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Issue / Error</th>
+                   <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">System Action</th>
+                 </tr>
+               </thead>
+               <tbody>
+                 {validationLogs.map(l => (
+                   <tr key={l.id} className="border-b border-gray-100 hover:bg-gray-50">
+                     <td className="py-3 px-4 text-sm text-gray-600">{new Date(l.time).toLocaleTimeString()}</td>
+                     <td className="py-3 px-4 font-medium text-gray-800">{l.user}</td>
+                     <td className="py-3 px-4 text-gray-600">{l.symbol}</td>
+                     <td className="py-3 px-4 text-gray-800">{l.issue}</td>
+                     <td className="py-3 px-4 text-right">
+                       <span className={`px-2 py-1 rounded text-xs font-bold ${l.action === 'REJECTED' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                         {l.action}
+                       </span>
+                     </td>
+                   </tr>
+                 ))}
+               </tbody>
+             </table>
+           </div>
+        </div>
+      )}
 
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />

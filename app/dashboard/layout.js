@@ -7,43 +7,50 @@ import { getDefaultDashboardPath, isStaffOnlyPath, isStaffRole } from '../../lib
 import {
   LayoutDashboard, TrendingUp, BarChart3, Star, Trophy, Settings,
   LogOut, Menu, X, Wallet, Activity, Clock, Briefcase,
-  LineChart, ListOrdered, TrendingDown
+  LineChart, ListOrdered, TrendingDown, Bell, BellRing, ChevronRight
 } from 'lucide-react';
-import { initSocket } from '../../lib/socket';
-import { market, auth, portfolio } from '../../lib/api';
+import { initSocket, disconnectSocket } from '../../lib/socket';
+import { clearAuthSession } from '../../lib/authSession';
+import { market, auth, portfolio, notifications as notificationsApi } from '../../lib/api';
 
 const navSections = [
   {
-    title: 'Overview',
+    title: 'Home',
     items: [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/dashboard/market', label: 'Market', icon: Clock },
+      { href: '/dashboard/sectors', label: 'Sectors', icon: BarChart3 },
     ],
   },
   {
-    title: 'Trading',
+    title: 'Trade',
     items: [
-      { href: '/dashboard/trade', label: 'Trade', icon: TrendingUp },
+      { href: '/dashboard/trade', label: 'Stocks', icon: TrendingUp },
+      { href: '/dashboard/options', label: 'F&O', icon: BarChart3 },
       { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered },
+      { href: '/dashboard/tradebook', label: 'Trade Book', icon: Briefcase },
+      { href: '/dashboard/positions', label: 'Positions', icon: Activity },
       { href: '/dashboard/charts', label: 'Charts', icon: BarChart3 },
       { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star },
+      { href: '/dashboard/alerts', label: 'Alerts', icon: BellRing },
     ],
   },
   {
-    title: 'Portfolio',
+    title: 'Wealth',
     items: [
       { href: '/dashboard/portfolio', label: 'Holdings', icon: Briefcase },
       { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
       { href: '/dashboard/time-loss', label: 'Time Loss', icon: TrendingDown },
       { href: '/dashboard/wallet', label: 'Wallet', icon: Wallet },
       { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: Trophy },
+      { href: '/dashboard/achievements', label: 'Achievements', icon: Star },
     ],
   },
 ];
 
 const staffNavSections = [
   {
-    title: 'Management',
+    title: 'Admin',
     items: [
       { href: '/dashboard/admin', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/dashboard/sessions', label: 'Sessions', icon: Activity },
@@ -51,12 +58,19 @@ const staffNavSections = [
   },
 ];
 
+function pageTitle(pathname) {
+  const slug = pathname.replace('/dashboard', '').replace(/^\//, '').replace(/-/g, ' ');
+  if (!slug) return 'Dashboard';
+  return slug.charAt(0).toUpperCase() + slug.slice(1);
+}
+
 export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [marketOpen, setMarketOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, init, setUser, authReady } = useAuthStore();
+  const { user, init, setUser, authReady } = useAuthStore();
   const { summary, setSummary } = usePortfolioStore();
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -83,8 +97,13 @@ export default function DashboardLayout({ children }) {
       try {
         const { data } = await auth.getProfile();
         if (data?.user) setUser(data.user);
-      } catch {
-        // keep cached user from localStorage
+      } catch (err) {
+        const stillHasToken = localStorage.getItem('token');
+        if (!stillHasToken) {
+          router.replace('/?session=expired');
+          return;
+        }
+        console.warn('Profile sync failed, using cached session:', err?.response?.data?.error || err.message);
       } finally {
         setAuthChecked(true);
       }
@@ -106,14 +125,20 @@ export default function DashboardLayout({ children }) {
 
   useEffect(() => {
     if (!authReady || !authChecked) return;
+    if (!localStorage.getItem('token')) {
+      router.replace('/?session=expired');
+      return;
+    }
     if (!isStaffRole(user?.role)) {
       refreshPortfolioSummary();
+      notificationsApi.getUnreadCount()
+        .then(({ data }) => setUnreadNotifications(data.count || 0))
+        .catch(() => {});
     }
-  }, [pathname, authReady, authChecked, user?.role]);
+    initSocket();
+  }, [pathname, authReady, authChecked, user?.role, router]);
 
   useEffect(() => {
-    initSocket();
-
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/sw.js').catch((err) => console.log('SW registration failed:', err));
     }
@@ -133,8 +158,7 @@ export default function DashboardLayout({ children }) {
     let logoutTimer;
 
     const handleInactivityLogout = () => {
-      localStorage.clear();
-      logout();
+      clearAuthSession();
       router.push('/?session=expired');
     };
 
@@ -163,8 +187,7 @@ export default function DashboardLayout({ children }) {
   }, []);
 
   const handleLogout = () => {
-    localStorage.clear();
-    logout();
+    clearAuthSession();
     router.push('/');
   };
 
@@ -179,10 +202,10 @@ export default function DashboardLayout({ children }) {
   };
 
   const navLinkClass = (isActive) =>
-    `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+    `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
       isActive
-        ? 'bg-blue-600 text-white shadow-sm'
-        : 'text-slate-300 hover:bg-slate-700/80 hover:text-white'
+        ? 'bg-groww-primary-light text-groww-primary'
+        : 'text-groww-muted hover:bg-groww-bg hover:text-groww-ink'
     }`;
 
   const renderNavLink = (item) => {
@@ -195,117 +218,108 @@ export default function DashboardLayout({ children }) {
         onClick={navigateTo(item.href)}
         className={navLinkClass(isActive)}
       >
-        <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+        <Icon
+          className={`h-[18px] w-[18px] shrink-0 ${
+            isActive ? 'text-groww-primary' : 'text-groww-muted group-hover:text-groww-ink'
+          }`}
+        />
         <span className="truncate">{item.label}</span>
+        {isActive && <ChevronRight className="ml-auto h-4 w-4 opacity-50" />}
       </a>
     );
   };
 
   const cashBalance = summary?.cashBalance ?? 0;
   const portfolioValue = summary?.totalValue ?? summary?.portfolioValue ?? cashBalance;
+  const dayPnL = summary?.dayPnL ?? 0;
+  const returnsPct = summary?.totalReturnsPercent ?? 0;
 
   if (!authChecked || !authReady) {
     return (
-      <div className="flex h-screen items-center justify-center bg-slate-100">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+      <div className="flex h-screen items-center justify-center bg-groww-bg">
+        <div className="groww-spinner" />
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-100">
+    <div className="flex h-screen overflow-hidden bg-groww-bg">
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[260px] flex-col border-r border-slate-700/50 bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 shadow-xl transition-transform duration-200 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}
+        className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[248px] flex-col border-r border-groww-border bg-groww-surface shadow-groww transition-transform duration-200 ease-out ${
+          sidebarOpen ? 'translate-x-0' : '-translate-x-full'
+        } md:translate-x-0`}
       >
-        {/* Brand */}
-        <div className="flex shrink-0 items-center justify-between border-b border-slate-700/60 px-4 py-3.5">
+        <div className="flex shrink-0 items-center justify-between px-4 py-4">
           <a
             href={homePath}
             onClick={navigateTo(homePath)}
             className="flex min-w-0 items-center gap-2.5"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 shadow-lg shadow-blue-900/40">
-              <TrendingUp className="h-4 w-4 text-white" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-groww-primary shadow-sm">
+              <TrendingUp className="h-4 w-4 text-white" strokeWidth={2.5} />
             </div>
-            <span className="truncate text-base font-bold tracking-tight text-white">VirtualTrade</span>
+            <span className="truncate text-lg font-bold tracking-tight text-groww-ink">VirtualTrade</span>
           </a>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-700 hover:text-white md:hidden"
+            className="rounded-lg p-1.5 text-groww-muted hover:bg-groww-bg md:hidden"
             aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        {/* User card */}
-        <div className="shrink-0 px-3 pt-3 pb-2">
-          <div className="rounded-xl border border-slate-600/40 bg-slate-800/80 p-3">
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600/20 text-sm font-bold text-blue-300 ring-1 ring-blue-500/30">
-                  {(user?.name || 'U').charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-white">{user?.name || 'User'}</p>
-                  <p className="truncate text-xs capitalize text-slate-400">{user?.role || '—'}</p>
-                </div>
-              </div>
+        {!isStaff && (
+          <div className="mx-3 mb-3 shrink-0 rounded-2xl border border-groww-border bg-groww-bg/80 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-groww-muted">Portfolio</p>
               <span
-                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  marketOpen ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'
+                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                  marketOpen ? 'bg-groww-primary-light text-groww-primary' : 'bg-red-50 text-groww-loss'
                 }`}
               >
-                {marketOpen ? 'Open' : 'Closed'}
+                {marketOpen ? 'Market open' : 'Closed'}
               </span>
             </div>
-            {!isStaff && (
-            <div className="grid grid-cols-2 gap-2 border-t border-slate-600/40 pt-2">
-              <div>
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Cash</p>
-                <p className="text-xs font-semibold text-white">
-                  ₹{cashBalance.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] uppercase tracking-wide text-slate-500">Portfolio</p>
-                <p className="text-xs font-semibold text-white">
-                  ₹{portfolioValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-                </p>
-              </div>
+            <p className="text-lg font-bold text-groww-ink">
+              ₹{portfolioValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+            </p>
+            <div className="mt-2 flex justify-between text-xs">
+              <span className="text-groww-muted">
+                Cash ₹{cashBalance.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+              <span className={dayPnL >= 0 ? 'text-profit font-medium' : 'text-loss font-medium'}>
+                {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })} today
+              </span>
             </div>
-            )}
           </div>
-        </div>
+        )}
 
-        {/* Nav — scrollable */}
-        <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-2">
+        <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-2">
           {visibleNavSections.map((section) => (
             <div key={section.title} className="mb-4 last:mb-2">
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-groww-muted/80">
                 {section.title}
               </p>
               <div className="space-y-0.5">{section.items.map(renderNavLink)}</div>
             </div>
           ))}
-
         </nav>
 
-        {/* Footer */}
-        <div className="shrink-0 space-y-0.5 border-t border-slate-700/60 bg-slate-900/50 p-3">
+        <div className="shrink-0 space-y-0.5 border-t border-groww-border p-3">
           <a
             href="/dashboard/settings"
             onClick={navigateTo('/dashboard/settings')}
-            className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-700/80 hover:text-white"
+            className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-groww-muted transition hover:bg-groww-bg hover:text-groww-ink"
           >
-            <Settings className="h-[18px] w-[18px] text-slate-400" />
+            <Settings className="h-[18px] w-[18px]" />
             Settings
           </a>
           <button
             type="button"
             onClick={handleLogout}
-            className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-rose-400 transition-colors hover:bg-rose-500/10 hover:text-rose-300"
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-groww-loss transition hover:bg-red-50"
           >
             <LogOut className="h-[18px] w-[18px]" />
             Logout
@@ -315,37 +329,69 @@ export default function DashboardLayout({ children }) {
 
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+          className="fixed inset-0 z-40 bg-groww-ink/20 backdrop-blur-[2px] md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-hidden
         />
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col md:ml-[260px]">
-        <header className="sticky top-0 z-30 flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 shadow-sm sm:px-6">
+      <main className="flex min-w-0 flex-1 flex-col md:ml-[248px]">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center gap-4 border-b border-groww-border bg-groww-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden"
+            className="rounded-xl p-2 text-groww-ink hover:bg-groww-bg md:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          <div className="hidden md:block">
-            <h1 className="text-lg font-semibold capitalize text-slate-800">
-              {pathname.replace('/dashboard', '').replace('/', '').replace(/-/g, ' ') || 'Dashboard'}
-            </h1>
+
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-lg font-semibold text-groww-ink">{pageTitle(pathname)}</h1>
+            {!isStaff && summary && (
+              <p className="hidden text-xs text-groww-muted sm:block">
+                Total returns{' '}
+                <span className={returnsPct >= 0 ? 'text-profit' : 'text-loss'}>
+                  {returnsPct >= 0 ? '+' : ''}
+                  {Number(returnsPct).toFixed(2)}%
+                </span>
+              </p>
+            )}
           </div>
-          <div className="ml-auto text-right">
-            <p className="text-sm font-medium text-slate-800">{user?.name}</p>
-            <p className="text-xs capitalize text-slate-500">{user?.role}</p>
+
+          <div className="flex items-center gap-2 sm:gap-3">
+            {!isStaff && (
+              <a
+                href="/dashboard/notifications"
+                onClick={navigateTo('/dashboard/notifications')}
+                className="relative rounded-xl p-2.5 text-groww-ink transition hover:bg-groww-bg"
+                aria-label="Notifications"
+              >
+                <Bell className="h-5 w-5" />
+                {unreadNotifications > 0 && (
+                  <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-groww-loss px-1 text-[10px] font-bold text-white">
+                    {unreadNotifications > 9 ? '9+' : unreadNotifications}
+                  </span>
+                )}
+              </a>
+            )}
+            <div className="hidden h-8 w-px bg-groww-border sm:block" />
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-groww-primary-light text-sm font-bold text-groww-primary">
+                {(user?.name || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div className="hidden text-right sm:block">
+                <p className="max-w-[120px] truncate text-sm font-medium text-groww-ink">{user?.name}</p>
+                <p className="text-xs capitalize text-groww-muted">{user?.role}</p>
+              </div>
+            </div>
           </div>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
           {children}
-          <p className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-400">
-            This is a paper trading simulation for educational purposes only. No real money is involved.
+          <p className="mt-10 border-t border-groww-border pt-5 text-center text-[11px] leading-relaxed text-groww-muted">
+            Paper trading simulation for education only. No real money is involved.
           </p>
         </div>
       </main>

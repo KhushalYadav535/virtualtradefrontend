@@ -59,14 +59,14 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-8 w-full max-w-md">
         <button onClick={() => router.push('/')} className="flex items-center gap-2 text-gray-500 hover:text-gray-700 mb-6">
           <ArrowLeft className="w-4 h-4" /> Back to Login
         </button>
 
-        <div className="flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mx-auto mb-6">
-          <Lock className="w-8 h-8 text-blue-500" />
+        <div className="flex items-center justify-center w-16 h-16 bg-groww-primary-light rounded-full mx-auto mb-6">
+          <Lock className="w-8 h-8 text-groww-primary" />
         </div>
 
         <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Reset Password</h1>
@@ -87,7 +87,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-3 bg-groww-primary text-white rounded-xl font-medium hover:bg-groww-primary-dark disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               Send OTP
@@ -123,7 +123,7 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-3 bg-groww-primary text-white rounded-xl font-medium hover:bg-groww-primary-dark disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               Reset Password

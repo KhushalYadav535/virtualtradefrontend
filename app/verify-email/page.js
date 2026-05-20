@@ -49,7 +49,7 @@ function VerifyEmailContent() {
 
   if (verified) {
     return (
-      <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+      <main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl p-8 w-full max-w-md text-center">
           <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-green-500" />
@@ -58,7 +58,7 @@ function VerifyEmailContent() {
           <p className="text-gray-500 mb-6">Your email has been successfully verified.</p>
           <button
             onClick={() => router.push('/')}
-            className="px-6 py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600"
+            className="px-6 py-3 bg-groww-primary text-white rounded-xl font-medium hover:bg-groww-primary-dark"
           >
             Go to Login
           </button>
@@ -68,10 +68,10 @@ function VerifyEmailContent() {
   }
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-8 w-full max-w-md">
-        <div className="flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mx-auto mb-6">
-          <Mail className="w-8 h-8 text-blue-500" />
+        <div className="flex items-center justify-center w-16 h-16 bg-groww-primary-light rounded-full mx-auto mb-6">
+          <Mail className="w-8 h-8 text-groww-primary" />
         </div>
 
         <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Verify Email</h1>
@@ -108,7 +108,7 @@ function VerifyEmailContent() {
           <button
             type="submit"
             disabled={loading || otp.length !== 6}
-            className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-3 bg-groww-primary text-white rounded-xl font-medium hover:bg-groww-primary-dark disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-4 h-4 animate-spin" />}
             Verify Email
@@ -117,7 +117,7 @@ function VerifyEmailContent() {
             type="button"
             onClick={handleResend}
             disabled={resending || !email}
-            className="w-full py-2 text-blue-500 text-sm hover:underline disabled:opacity-50"
+            className="w-full py-2 text-groww-primary text-sm hover:underline disabled:opacity-50"
           >
             {resending ? 'Sending...' : 'Resend OTP'}
           </button>
@@ -129,7 +129,7 @@ function VerifyEmailContent() {
 
 export default function VerifyEmailPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900" />}>
+    <Suspense fallback={<main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg" />}>
       <VerifyEmailContent />
     </Suspense>
   );

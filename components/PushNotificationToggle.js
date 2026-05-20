@@ -146,7 +146,7 @@ export default function PushNotificationToggle() {
           className={`px-4 py-2 rounded-lg text-sm font-medium ${
             isSubscribed
               ? 'bg-red-100 text-red-600 hover:bg-red-200'
-              : 'bg-blue-500 text-white hover:bg-blue-600'
+              : 'bg-groww-primary text-white hover:bg-groww-primary-dark'
           } disabled:opacity-50`}
         >
           {subscribing ? (

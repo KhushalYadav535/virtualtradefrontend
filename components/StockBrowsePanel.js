@@ -12,6 +12,11 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [exchangeFilter, setExchangeFilter] = useState('ALL');
+  const [sectorFilter, setSectorFilter] = useState('');
+  const [lotFilter, setLotFilter] = useState('');
+  const [sectors, setSectors] = useState([]);
+  const [recentSearches, setRecentSearches] = useState([]);
+  const [popular, setPopular] = useState([]);
   const [stocks, setStocks] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -31,7 +36,10 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
     else setLoadingMore(true);
 
     try {
-      const { data } = await market.search(searchQuery, exchangeFilter, PAGE_SIZE, offset);
+      const { data } = await market.search(searchQuery, exchangeFilter, PAGE_SIZE, offset, {
+        sector: sectorFilter || undefined,
+        lotFilter: lotFilter || undefined
+      });
       const items = data.items || data;
       const nextTotal = data.total ?? items.length;
 
@@ -53,13 +61,18 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
       setLoadingMore(false);
       loadingRef.current = false;
     }
-  }, [searchQuery, exchangeFilter]);
+  }, [searchQuery, exchangeFilter, sectorFilter, lotFilter]);
+
+  useEffect(() => {
+    market.getSectors().then(({ data }) => setSectors(data || [])).catch(() => {});
+    market.getPopularSearches().then(({ data }) => setPopular(data || [])).catch(() => {});
+    market.getRecentSearches().then(({ data }) => setRecentSearches(data || [])).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => fetchStocks(true), 400);
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery, exchangeFilter]);
+  }, [fetchStocks]);
 
   const handleScroll = () => {
     const el = listRef.current;
@@ -70,11 +83,11 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
   };
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 flex flex-col h-[min(70vh,640px)] lg:h-[calc(100vh-12rem)]">
-      <div className="p-3 border-b border-gray-100 space-y-2 shrink-0">
+    <div className="groww-card-flat flex h-[min(70vh,640px)] flex-col lg:h-[calc(100vh-12rem)]">
+      <div className="shrink-0 space-y-2 border-b border-groww-border p-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-800 text-sm">Stocks</h3>
-          <span className="text-xs text-gray-500">
+          <h3 className="text-sm font-semibold text-groww-ink">Stocks</h3>
+          <span className="text-xs text-groww-muted">
             {loading ? '...' : `${total.toLocaleString()} symbols`}
           </span>
         </div>
@@ -85,23 +98,68 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
               type="button"
               onClick={() => setExchangeFilter(ex)}
               className={`px-2 py-0.5 rounded text-xs font-medium ${
-                exchangeFilter === ex ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+                exchangeFilter === ex ? 'bg-groww-primary text-white' : 'bg-groww-bg text-groww-muted'
               }`}
             >
               {ex === 'ALL' ? 'All' : ex}
             </button>
           ))}
         </div>
+        {sectors.length > 0 && (
+          <select
+            value={sectorFilter}
+            onChange={(e) => setSectorFilter(e.target.value)}
+            className="groww-input py-2 text-sm"
+          >
+            <option value="">All sectors</option>
+            {sectors.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        )}
+        <select
+          value={lotFilter}
+          onChange={(e) => setLotFilter(e.target.value)}
+          className="groww-input py-2 text-sm"
+        >
+          <option value="">All lot sizes</option>
+          <option value="eq1">Lot size = 1 (equity cash)</option>
+          <option value="gt1">Lot size &gt; 1 (F&amp;O-style)</option>
+        </select>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search symbol or name..."
-            className="w-full pl-8 pr-3 py-2 text-sm border rounded-lg focus:ring-2 focus:ring-blue-500"
+            placeholder="Symbol, name, or ISIN..."
+            className="groww-input py-2 pl-8 text-sm"
           />
         </div>
+        {(recentSearches.length > 0 || popular.length > 0) && !searchQuery && (
+          <div className="flex flex-wrap gap-1">
+            {recentSearches.slice(0, 5).map((r) => (
+              <button
+                key={r.query}
+                type="button"
+                onClick={() => setSearchQuery(r.symbol || r.query)}
+                className="rounded-full bg-groww-primary-light px-2 py-0.5 text-[10px] font-medium text-groww-primary"
+              >
+                {r.symbol || r.query}
+              </button>
+            ))}
+            {popular.slice(0, 4).map((sym) => (
+              <button
+                key={sym}
+                type="button"
+                onClick={() => setSearchQuery(sym)}
+                className="rounded-full bg-groww-bg px-2 py-0.5 text-[10px] text-groww-muted"
+              >
+                {sym}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div
@@ -111,7 +169,7 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
       >
         {loading && stocks.length === 0 ? (
           <div className="flex justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-blue-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-groww-primary" />
           </div>
         ) : stocks.length === 0 ? (
           <p className="text-center text-gray-500 text-sm py-8">No stocks found</p>
@@ -124,13 +182,11 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
                 key={`${s.exchange}-${s.symbol}`}
                 type="button"
                 onClick={() => onSelect(s)}
-                className={`w-full text-left px-3 py-2.5 border-b border-gray-50 hover:bg-blue-50 transition ${
-                  active ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
-                }`}
+                className={active ? 'groww-stock-row-active' : 'groww-stock-row'}
                 style={{ minHeight: ROW_HEIGHT }}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-medium text-sm text-gray-900">{s.symbol}</span>
+                  <span className="text-sm font-semibold text-groww-ink">{s.symbol}</span>
                   <div className="flex items-center gap-1 shrink-0">
                     {showDetailLink && (
                       <span
@@ -146,7 +202,7 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
                             router.push(`/dashboard/stock/${s.symbol}?exchange=${s.exchange || 'NSE'}`);
                           }
                         }}
-                        className="p-1 rounded hover:bg-blue-100 text-gray-400 hover:text-blue-600"
+                        className="rounded-lg p-1 text-groww-muted hover:bg-groww-primary-light hover:text-groww-primary"
                         title="Stock details"
                       >
                         <Info className="w-3.5 h-3.5" />
@@ -158,13 +214,14 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 truncate mt-0.5">{s.name}</p>
+                <p className="text-[10px] text-gray-400 truncate">Lot {s.lotSize || 1}</p>
               </button>
             );
           })
         )}
         {loadingMore && (
           <div className="flex justify-center py-3">
-            <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+            <Loader2 className="h-5 w-5 animate-spin text-groww-primary" />
           </div>
         )}
         {!hasMore && stocks.length > 0 && (

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { auth } from '../../../lib/api';
 import { useAuthStore } from '../../../lib/store';
-import { monitor, devices } from 'lucide-react';
+import { Monitor } from 'lucide-react';
 import { Loader2, Trash2, LogOut, AlertCircle } from 'lucide-react';
 
 export default function SessionsPage() {
@@ -65,7 +65,7 @@ export default function SessionsPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        <Loader2 className="w-8 h-8 animate-spin text-groww-primary" />
       </div>
     );
   }
@@ -116,8 +116,8 @@ export default function SessionsPage() {
                 <tr key={session.id} className="border-b border-gray-100">
                   <td className="py-4 px-6">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                        <monitor className="w-4 h-4 text-blue-600" />
+                      <div className="w-8 h-8 bg-groww-primary-light rounded-lg flex items-center justify-center">
+                        <Monitor className="w-4 h-4 text-groww-primary" />
                       </div>
                       <span className="text-sm text-gray-600">{session.device_info || 'Unknown Device'}</span>
                     </div>
@@ -161,7 +161,7 @@ export default function SessionsPage() {
 
         {sessions.length === 0 && (
           <div className="text-center py-12">
-            <monitor className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+            <Monitor className="w-12 h-12 text-gray-300 mx-auto mb-3" />
             <p className="text-gray-500">No active sessions</p>
           </div>
         )}

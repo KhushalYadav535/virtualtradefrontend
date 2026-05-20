@@ -2,18 +2,31 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { portfolio, market, leaderboard } from '../../lib/api';
-import { useAuthStore, usePortfolioStore, useMarketStore } from '../../lib/store';
+import Link from 'next/link';
+import { portfolio, market, leaderboard, trading, activity } from '../../lib/api';
+import { useAuthStore, usePortfolioStore } from '../../lib/store';
 import { isStaffRole } from '../../lib/roles';
-import { TrendingUp, TrendingDown, Wallet, BarChart3, ArrowUp, ArrowDown, Clock } from 'lucide-react';
+import MarketCountdown from '../../components/MarketCountdown';
+import {
+  TrendingUp, TrendingDown, Wallet, BarChart3, ArrowUp, ArrowDown, Clock,
+  ShoppingCart, ListOrdered, Star, Activity, Layers, ChevronRight
+} from 'lucide-react';
+
+const quickActions = [
+  { href: '/dashboard/trade', label: 'Stocks', icon: ShoppingCart, tint: 'bg-groww-primary-light text-groww-primary' },
+  { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered, tint: 'bg-amber-50 text-amber-600' },
+  { href: '/dashboard/positions', label: 'Positions', icon: Layers, tint: 'bg-violet-50 text-violet-600' },
+  { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star, tint: 'bg-sky-50 text-sky-600' },
+];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [indices, setIndices] = useState([]);
   const [leaderboard, setLeaderboard] = useState([]);
   const [marketStatus, setMarketStatus] = useState(null);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [activityFeed, setActivityFeed] = useState([]);
   const { summary, setSummary } = usePortfolioStore();
-  const { prices } = useMarketStore();
   const { user, authReady } = useAuthStore();
   const router = useRouter();
 
@@ -42,14 +55,18 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     try {
-      const [summaryRes, indicesRes, leaderboardRes] = await Promise.all([
+      const [summaryRes, indicesRes, leaderboardRes, ordersRes, activityRes] = await Promise.all([
         portfolio.getSummary(),
         market.getIndices(),
-        leaderboard.get({ limit: 5 })
+        leaderboard.get({ limit: 5 }),
+        trading.getOrders(5).catch(() => ({ data: [] })),
+        activity.getFeed(12).catch(() => ({ data: [] }))
       ]);
       setSummary(summaryRes.data);
       setIndices(indicesRes.data);
       setLeaderboard(leaderboardRes.data.slice(0, 5));
+      setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
+      setActivityFeed(Array.isArray(activityRes?.data) ? activityRes.data : []);
       await loadMarketStatus();
     } catch (err) {
       console.error(err);
@@ -58,153 +75,305 @@ export default function DashboardPage() {
     }
   };
 
-  if (!authReady || isStaffRole(user?.role) || loading) return <div className="flex items-center justify-center h-64"><div className="animate-spin w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full"></div></div>;
+  if (!authReady || isStaffRole(user?.role) || loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="groww-spinner" />
+      </div>
+    );
+  }
+
+  const totalValue = summary?.totalValue ?? 0;
+  const returns = summary?.totalReturns ?? 0;
+  const returnsPct = summary?.totalReturnsPercent ?? 0;
+  const dayPnL = summary?.dayPnL ?? 0;
+
+  const investedValue = summary?.investedValue ?? Math.max(0, (summary?.holdingsValue || 0) - (summary?.totalReturns || 0));
 
   return (
-    <div className="space-y-6">
-      {marketStatus && (
-        <div className={`rounded-lg p-3 flex items-center justify-between ${
-          marketStatus.isOpen ? 'bg-green-50 border border-green-200' : 'bg-gray-50 border border-gray-200'
-        }`}>
-          <div className="flex items-center gap-2">
-            <Clock className={`w-4 h-4 ${marketStatus.isOpen ? 'text-green-600' : 'text-gray-400'}`} />
-            <span className={`text-sm font-medium ${marketStatus.isOpen ? 'text-green-700' : 'text-gray-600'}`}>
-              Market {marketStatus.isOpen ? 'Open' : 'Closed'}
-            </span>
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* Hero portfolio */}
+      <div className="groww-hero">
+        <p className="text-sm font-medium text-white/80">Current value</p>
+        <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
+          ₹{totalValue.toLocaleString('en-IN')}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-4 text-sm">
+          <div>
+            <p className="text-white/70">Total returns</p>
+            <p className={`font-semibold ${returns >= 0 ? 'text-white' : 'text-red-100'}`}>
+              {returns >= 0 ? '+' : ''}₹{Math.abs(returns).toLocaleString('en-IN')} ({returnsPct?.toFixed(2)}%)
+            </p>
           </div>
-          <span className="text-xs text-gray-500">
-            {marketStatus.isOpen ? 'Trading active' : `Next open: ${new Date(marketStatus.nextOpen).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit' })}`}
-          </span>
+          <div>
+            <p className="text-white/70">Today&apos;s P&L</p>
+            <p className={`font-semibold ${dayPnL >= 0 ? 'text-white' : 'text-red-100'}`}>
+              {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN')}
+            </p>
+          </div>
+          <div className="ml-auto flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur-sm">
+            <Clock className="h-3.5 w-3.5" />
+            <span className="text-xs font-medium">
+              {marketStatus?.isOpen ? 'Market open' : 'Market closed'}
+            </span>
+            {marketStatus && (
+              <MarketCountdown
+                isOpen={marketStatus.isOpen}
+                nextOpen={marketStatus.nextOpen}
+                nextClose={marketStatus.nextClose}
+              />
+            )}
+          </div>
         </div>
-      )}
-
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
-        <p className="text-gray-500">Welcome back! Here's your portfolio overview.</p>
       </div>
 
+      {/* Quick actions */}
+      <div className="grid grid-cols-4 gap-3">
+        {quickActions.map((action) => (
+          <Link
+            key={action.href}
+            href={action.href}
+            className="groww-card flex flex-col items-center gap-2 p-4 transition hover:border-groww-primary-muted hover:shadow-groww-lg"
+          >
+            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${action.tint}`}>
+              <action.icon className="h-5 w-5" strokeWidth={2} />
+            </div>
+            <span className="text-xs font-semibold text-groww-ink">{action.label}</span>
+          </Link>
+        ))}
+      </div>
+
+      {/* Indices strip */}
       {indices.length > 0 && (
-        <div className="grid md:grid-cols-2 gap-4">
+        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
           {indices.map((idx, i) => (
-            <div key={i} className="bg-white rounded-xl p-4 border border-gray-200">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-sm text-gray-500">{idx.symbol}</p>
-                  <p className="text-2xl font-bold text-gray-800">₹{idx.ltp?.toLocaleString()}</p>
-                </div>
-                <div className={`flex items-center gap-1 ${idx.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {idx.changePercent >= 0 ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
-                  <span className="font-medium">{idx.changePercent?.toFixed(2)}%</span>
-                </div>
+            <div key={i} className="groww-card min-w-[160px] shrink-0 p-4">
+              <p className="text-xs font-medium text-groww-muted">{idx.symbol}</p>
+              <p className="mt-1 text-lg font-bold text-groww-ink">
+                ₹{idx.ltp?.toLocaleString('en-IN')}
+              </p>
+              <div
+                className={`mt-1 flex items-center gap-0.5 text-sm font-semibold ${
+                  idx.changePercent >= 0 ? 'text-profit' : 'text-loss'
+                }`}
+              >
+                {idx.changePercent >= 0 ? (
+                  <ArrowUp className="h-3.5 w-3.5" />
+                ) : (
+                  <ArrowDown className="h-3.5 w-3.5" />
+                )}
+                {idx.changePercent?.toFixed(2)}%
               </div>
             </div>
           ))}
         </div>
       )}
 
-      <div className="grid md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-blue-600" />
+      {/* Stats grid */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          { label: 'Cash balance', value: summary?.cashBalance, icon: Wallet, tint: 'bg-groww-primary-light text-groww-primary' },
+          { label: 'Current Value', value: summary?.holdingsValue, icon: BarChart3, tint: 'bg-emerald-50 text-emerald-600' },
+          { label: 'Invested', value: investedValue, icon: TrendingUp, tint: 'bg-violet-50 text-violet-600' },
+          { label: 'MIS P&L', value: summary?.positionsPnl, icon: Layers, tint: 'bg-amber-50 text-amber-600', signed: true },
+        ].map((stat) => (
+          <div key={stat.label} className="groww-card p-5">
+            <div className="mb-3 flex items-center gap-3">
+              <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.tint}`}>
+                <stat.icon className="h-5 w-5" />
+              </div>
+              <span className="text-sm text-groww-muted">{stat.label}</span>
             </div>
-            <span className="text-gray-500">Cash Balance</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-800">₹{summary?.cashBalance?.toLocaleString()}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-              <BarChart3 className="w-5 h-5 text-emerald-600" />
-            </div>
-            <span className="text-gray-500">Holdings Value</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-800">₹{summary?.holdingsValue?.toLocaleString()}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-purple-600" />
-            </div>
-            <span className="text-gray-500">Total Value</span>
-          </div>
-          <p className="text-2xl font-bold text-gray-800">₹{summary?.totalValue?.toLocaleString()}</p>
-        </div>
-
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex items-center gap-3 mb-2">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${summary?.totalReturns >= 0 ? 'bg-green-100' : 'bg-red-100'}`}>
-              {summary?.totalReturns >= 0 ? <ArrowUp className="w-5 h-5 text-green-600" /> : <ArrowDown className="w-5 h-5 text-red-600" />}
-            </div>
-            <span className="text-gray-500">Total Returns</span>
-          </div>
-          <p className={`text-2xl font-bold ${summary?.totalReturns >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            {summary?.totalReturns >= 0 ? '+' : ''}₹{summary?.totalReturns?.toLocaleString()} ({summary?.totalReturnsPercent?.toFixed(2)}%)
-          </p>
-          {summary?.dayPnL !== undefined && (
-            <p className={`text-sm mt-1 ${summary?.dayPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-              Today: {summary?.dayPnL >= 0 ? '+' : ''}₹{summary?.dayPnL?.toLocaleString()}
+            <p
+              className={`text-xl font-bold ${
+                stat.signed && stat.value < 0 ? 'text-loss' : stat.signed && stat.value > 0 ? 'text-profit' : 'text-groww-ink'
+              }`}
+            >
+              {stat.signed && stat.value > 0 ? '+' : ''}₹{Number(stat.value || 0).toLocaleString('en-IN')}
             </p>
-          )}
-        </div>
+          </div>
+        ))}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Top Holdings</h2>
-          <div className="space-y-3">
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="groww-card p-5 lg:col-span-1">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="groww-section-title">MIS positions</h2>
+            <Link href="/dashboard/positions" className="groww-link flex items-center gap-0.5">
+              All <ChevronRight className="h-4 w-4" />
+            </Link>
+          </div>
+          {(summary?.intradayPositions?.length ?? 0) > 0 ? (
+            <div className="space-y-2">
+              {summary.intradayPositions.slice(0, 4).map((p) => (
+                <div
+                  key={p.symbol}
+                  className="flex justify-between rounded-xl bg-groww-bg px-3 py-2.5 text-sm"
+                >
+                  <span className="font-semibold text-groww-ink">{p.symbol}</span>
+                  <span className={p.pnl >= 0 ? 'text-profit font-medium' : 'text-loss font-medium'}>
+                    {(p.pnl >= 0 ? '+' : '')}₹{Number(p.pnl || 0).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-groww-muted">No open intraday positions</p>
+          )}
+        </div>
+
+        <div className="groww-card p-5 lg:col-span-1">
+          <h2 className="groww-section-title mb-4">Portfolio Analytics</h2>
+          {(summary?.holdings?.length ?? 0) > 0 ? (
+            <div className="space-y-4">
+              {summary.holdings
+                .slice()
+                .sort((a, b) => (b.currentValue || 0) - (a.currentValue || 0))
+                .slice(0, 3)
+                .map((h, i) => {
+                  const total = summary.holdingsValue || 1;
+                  const pct = ((h.currentValue || 0) / total) * 100;
+                  const colors = ['bg-groww-primary', 'bg-emerald-500', 'bg-amber-500'];
+                  return (
+                    <div key={i}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="font-semibold text-groww-ink">{h.symbol}</span>
+                        <span className="text-groww-muted">{pct.toFixed(1)}%</span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-groww-bg">
+                        <div className={`h-full rounded-full ${colors[i]}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              <Link href="/dashboard/portfolio" className="groww-link mt-2 block text-center">
+                View Full Breakdown
+              </Link>
+            </div>
+          ) : (
+            <p className="py-8 text-center text-sm text-groww-muted">No analytics available</p>
+          )}
+        </div>
+
+        <div className="groww-card p-5 lg:col-span-1">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="groww-section-title">Top holdings</h2>
+            <Link href="/dashboard/portfolio" className="groww-link">
+              View all
+            </Link>
+          </div>
+          <div className="space-y-2">
             {summary?.holdings?.slice(0, 5).map((h, i) => (
-              <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+              <div key={i} className="flex justify-between rounded-xl bg-groww-bg px-3 py-2.5">
                 <div>
-                  <p className="font-medium text-gray-800">{h.symbol}</p>
-                  <p className="text-sm text-gray-500">{h.qty} shares @ ₹{h.avgBuyPrice?.toFixed(2)}</p>
+                  <p className="text-sm font-semibold text-groww-ink">{h.symbol}</p>
+                  <p className="text-xs text-groww-muted">
+                    {h.qty} @ ₹{h.avgBuyPrice?.toFixed(2)}
+                  </p>
                 </div>
                 <div className="text-right">
-                  <p className="font-medium text-gray-800">₹{h.currentValue?.toLocaleString()}</p>
-                  <p className={`text-sm ${h.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {h.pnl >= 0 ? '+' : ''}₹{h.pnl?.toFixed(2)} ({h.pnlPercent}%)
+                  <p className="text-sm font-semibold text-groww-ink">
+                    ₹{h.currentValue?.toLocaleString('en-IN')}
+                  </p>
+                  <p className={`text-xs font-medium ${h.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    {h.pnl >= 0 ? '+' : ''}₹{h.pnl?.toFixed(2)}
                   </p>
                 </div>
               </div>
             ))}
             {(!summary?.holdings || summary.holdings.length === 0) && (
-              <p className="text-gray-500 text-center py-4">No holdings yet</p>
+              <p className="py-8 text-center text-sm text-groww-muted">No holdings yet</p>
             )}
           </div>
         </div>
 
-        <div className="bg-white rounded-xl p-6 border border-gray-200">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-gray-800">Leaderboard</h2>
-            <button onClick={() => router.push('/dashboard/leaderboard')} className="text-blue-500 text-sm">View All</button>
+        <div className="groww-card p-5 lg:col-span-1">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="groww-section-title">Leaderboard</h2>
+            <button type="button" onClick={() => router.push('/dashboard/leaderboard')} className="groww-link">
+              View all
+            </button>
           </div>
-          <div className="space-y-3">
-            {leaderboard.map((user, i) => (
-              <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                <div className="flex items-center gap-3">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                    i === 0 ? 'bg-yellow-400 text-white' : i === 1 ? 'bg-gray-300 text-gray-800' : i === 2 ? 'bg-amber-600 text-white' : 'bg-gray-200 text-gray-600'
-                  }`}>{i + 1}</span>
-                  <span className="font-medium text-gray-800">{user.name}</span>
+          <div className="space-y-2">
+            {leaderboard.map((u, i) => (
+              <div key={i} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5">
+                <div className="flex items-center gap-2.5">
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                      i === 0
+                        ? 'bg-amber-400 text-white'
+                        : i === 1
+                          ? 'bg-gray-300 text-groww-ink'
+                          : i === 2
+                            ? 'bg-amber-600/80 text-white'
+                            : 'bg-groww-border text-groww-muted'
+                    }`}
+                  >
+                    {i + 1}
+                  </span>
+                  <span className="text-sm font-medium text-groww-ink">{u.name}</span>
                 </div>
-                <div className="text-right">
-                  <p className="font-medium text-gray-800">₹{user.portfolioValue?.toLocaleString()}</p>
-                  <p className={`text-sm ${user.totalReturns >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {user.totalReturns >= 0 ? '+' : ''}₹{user.totalReturns?.toFixed(0)}
-                  </p>
-                </div>
+                <p className={`text-sm font-semibold ${u.totalReturns >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  {u.totalReturns >= 0 ? '+' : ''}₹{u.totalReturns?.toFixed(0)}
+                </p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-        <p className="text-sm text-blue-800">
-          <strong>Disclaimer:</strong> This is a paper trading simulation for educational purposes only. No real money is involved.
-        </p>
+      {activityFeed.length > 0 && (
+        <div className="groww-card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Activity className="h-5 w-5 text-groww-primary" />
+            <h2 className="groww-section-title">Recent activity</h2>
+          </div>
+          <div className="max-h-72 space-y-2 overflow-y-auto">
+            {activityFeed.map((item) => (
+              <div key={item.id} className="flex gap-3 rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-groww-ink">{item.title}</p>
+                  <p className="truncate text-groww-muted">{item.description}</p>
+                </div>
+                <span className="shrink-0 text-xs text-groww-muted">
+                  {new Date(item.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recentOrders.length > 0 && (
+        <div className="groww-card p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="groww-section-title">Recent orders</h2>
+            <Link href="/dashboard/orders" className="groww-link">
+              View all
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {recentOrders.map((o) => (
+              <div key={o.id} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
+                <div>
+                  <span className={`font-bold ${o.order_type === 'BUY' ? 'text-profit' : 'text-loss'}`}>
+                    {o.order_type}
+                  </span>
+                  <span className="ml-2 font-medium text-groww-ink">{o.symbol}</span>
+                  <span className="ml-2 text-groww-muted">× {o.qty}</span>
+                </div>
+                <span className="capitalize text-groww-muted">{o.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-groww-primary-muted bg-groww-primary-light/50 px-4 py-3 text-sm text-groww-ink">
+        <strong className="font-semibold text-groww-primary">Note:</strong> Paper trading for education only.{' '}
+        <Link href="/legal/disclaimer" className="groww-link">
+          Read disclaimer
+        </Link>
       </div>
     </div>
   );

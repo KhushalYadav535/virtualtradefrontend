@@ -39,10 +39,10 @@ function Verify2FAContent() {
   };
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex items-center justify-center p-4">
+    <main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl p-8 w-full max-w-md">
-        <div className="flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mx-auto mb-6">
-          <Shield className="w-8 h-8 text-blue-500" />
+        <div className="flex items-center justify-center w-16 h-16 bg-groww-primary-light rounded-full mx-auto mb-6">
+          <Shield className="w-8 h-8 text-groww-primary" />
         </div>
 
         <h1 className="text-2xl font-bold text-center text-gray-800 mb-2">Two-Factor Authentication</h1>
@@ -63,7 +63,7 @@ function Verify2FAContent() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="000000"
-              className="w-full text-center text-3xl tracking-widest p-4 border rounded-xl focus:ring-2 focus:ring-blue-500"
+              className="w-full text-center text-3xl tracking-widest p-4 border rounded-xl focus:ring-2 focus:ring-groww-primary"
               maxLength={6}
               autoFocus
             />
@@ -72,7 +72,7 @@ function Verify2FAContent() {
           <button
             type="submit"
             disabled={loading || code.length !== 6}
-            className="w-full py-3 bg-blue-500 text-white rounded-xl font-medium hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            className="w-full py-3 bg-groww-primary text-white rounded-xl font-medium hover:bg-groww-primary-dark disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {loading && <Loader2 className="w-5 h-5 animate-spin" />}
             Verify
@@ -81,7 +81,7 @@ function Verify2FAContent() {
 
         <p className="text-center text-sm text-gray-500 mt-6">
           Don't have access to your authenticator?
-          <button onClick={() => router.push('/')} className="text-blue-500 font-medium ml-1">
+          <button onClick={() => router.push('/')} className="text-groww-primary font-medium ml-1">
             Go back
           </button>
         </p>
@@ -92,7 +92,7 @@ function Verify2FAContent() {
 
 export default function Verify2FAPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900" />}>
+    <Suspense fallback={<main className="min-h-screen bg-gradient-to-br from-groww-primary-light via-white to-groww-bg" />}>
       <Verify2FAContent />
     </Suspense>
   );

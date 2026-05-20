@@ -1,16 +1,20 @@
 import './globals.css';
-import { Inter } from 'next/font/google';
+import { DM_Sans } from 'next/font/google';
 
-const inter = Inter({ subsets: ['latin'] });
+const dmSans = DM_Sans({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  variable: '--font-dm-sans'
+});
 
 export const metadata = {
-  title: 'VirtualTrade - Paper Trading Platform',
+  title: 'VirtualTrade — Paper Trading',
   description: 'Practice stock trading with virtual money. Real market data, zero risk.',
   manifest: '/manifest.json',
 };
 
 export const viewport = {
-  themeColor: '#3b82f6',
+  themeColor: '#00b386',
 };
 
 export default function RootLayout({ children }) {
@@ -20,7 +24,9 @@ export default function RootLayout({ children }) {
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icon.svg" />
       </head>
-      <body className={inter.className}>{children}</body>
+      <body className={`${dmSans.variable} font-sans antialiased`} suppressHydrationWarning>
+        {children}
+      </body>
     </html>
   );
 }

@@ -269,7 +269,7 @@ export default function ChartsPage() {
           <button
             type="button"
             onClick={() => loadData()}
-            className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 text-sm"
+            className="px-4 py-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark text-sm"
           >
             Refresh chart
           </button>
@@ -280,7 +280,7 @@ export default function ChartsPage() {
             <button
               onClick={() => toggleChartType('candlestick')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                chartType === 'candlestick' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-800'
+                chartType === 'candlestick' ? 'bg-white shadow text-groww-primary' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Candlestick
@@ -288,7 +288,7 @@ export default function ChartsPage() {
             <button
               onClick={() => toggleChartType('line')}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                chartType === 'line' ? 'bg-white shadow text-blue-600' : 'text-gray-600 hover:text-gray-800'
+                chartType === 'line' ? 'bg-white shadow text-groww-primary' : 'text-gray-600 hover:text-gray-800'
               }`}
             >
               Line
@@ -301,7 +301,7 @@ export default function ChartsPage() {
                 key={tf.value}
                 onClick={() => setTimeframe(tf.value)}
                 className={`px-3 py-1 rounded-lg text-sm font-medium transition ${
-                  timeframe === tf.value ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  timeframe === tf.value ? 'bg-groww-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                 }`}
               >
                 {tf.label}
@@ -312,7 +312,7 @@ export default function ChartsPage() {
           <button
             onClick={() => setShowIndicatorPanel(!showIndicatorPanel)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              showIndicatorPanel ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              showIndicatorPanel ? 'bg-groww-primary text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
             }`}
           >
             Indicators
@@ -328,7 +328,7 @@ export default function ChartsPage() {
                 onClick={() => toggleIndicator(ind.id)}
                 className={`px-3 py-1 rounded-lg text-sm font-medium border-2 transition ${
                   activeIndicators.includes(ind.id)
-                    ? 'border-blue-500 bg-blue-50 text-blue-600'
+                    ? 'border-groww-primary bg-groww-primary-light text-groww-primary'
                     : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300'
                 }`}
                 style={activeIndicators.includes(ind.id) ? { borderColor: ind.color, color: ind.color } : {}}
@@ -349,7 +349,7 @@ export default function ChartsPage() {
           <div ref={chartContainerRef} className="w-full h-96" />
           {loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-white/80">
-              <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+              <Loader2 className="w-8 h-8 animate-spin text-groww-primary" />
             </div>
           )}
         </div>
