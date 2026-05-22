@@ -208,9 +208,9 @@ export default function DashboardLayout({ children }) {
     localStorage.setItem('tradingPrefs', JSON.stringify(prefs));
     useConnectionStore.getState().setLowDataMode(prefs.lowDataMode);
 
-    deferNonCritical(() => {
+    deferNonCritical(async () => {
       if (!isStaffRole(user?.role)) {
-        refreshPortfolioSummary();
+        await refreshPortfolioSummary();
         notificationsApi
           .getUnreadCount()
           .then(({ data }) => setUnreadNotifications(data.count || 0))

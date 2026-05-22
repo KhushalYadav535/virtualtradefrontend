@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { market, leaderboard as leaderboardApi, trading, activity } from '../../lib/api';
 import { useAuthStore, usePortfolioStore, useMarketStore } from '../../lib/store';
 import { loadCachedPortfolioSummary } from '../../lib/portfolioCache';
-import { initSocket } from '../../lib/socket';
 import { isStaffRole } from '../../lib/roles';
 import MarketCountdown from '../../components/MarketCountdown';
 import {
@@ -23,7 +22,7 @@ const quickActions = [
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
-  const [indices, setIndices] = useState([]);
+  const indices = useMarketStore((s) => s.indices);
   const [topLeaderboard, setTopLeaderboard] = useState([]);
   const [marketStatus, setMarketStatus] = useState(null);
   const [recentOrders, setRecentOrders] = useState([]);
@@ -39,12 +38,11 @@ export default function DashboardPage() {
     }
   }, [authReady, user?.role, router]);
 
-  const { setIndices: setStoreIndices } = useMarketStore();
+  const setStoreIndices = useMarketStore((s) => s.setIndices);
 
   const refreshIndices = useCallback(async () => {
     try {
       const { data } = await market.getIndices();
-      setIndices(data || []);
       setStoreIndices(data || []);
     } catch (err) {
       console.error(err);
@@ -57,19 +55,9 @@ export default function DashboardPage() {
     const marketInterval = setInterval(loadMarketStatus, 60000);
     const indicesInterval = setInterval(refreshIndices, 60000);
 
-    const socket = initSocket();
-    const onIndex = (data) => {
-      if (Array.isArray(data?.indices) && data.indices.length) {
-        setIndices(data.indices);
-        setStoreIndices(data.indices);
-      }
-    };
-    socket?.on('indexUpdate', onIndex);
-
     return () => {
       clearInterval(marketInterval);
       clearInterval(indicesInterval);
-      socket?.off('indexUpdate', onIndex);
     };
   }, [authReady, user?.role, refreshIndices, setStoreIndices]);
 
@@ -94,7 +82,6 @@ export default function DashboardPage() {
       activity.getFeed(12).catch(() => ({ data: [] }))
     ])
       .then(([indicesRes, leaderboardRes, ordersRes, activityRes]) => {
-        setIndices(indicesRes.data || []);
         setStoreIndices(indicesRes.data || []);
         setTopLeaderboard((leaderboardRes.data || []).slice(0, 5));
         setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
