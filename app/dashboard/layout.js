@@ -7,7 +7,7 @@ import { getDefaultDashboardPath, isStaffOnlyPath, isStaffRole } from '../../lib
 import {
   LayoutDashboard, TrendingUp, BarChart3, Star, Trophy, Settings,
   LogOut, Menu, X, Wallet, Activity, Clock, Briefcase,
-  LineChart, ListOrdered, TrendingDown, Bell, BellRing, ChevronRight, WifiOff, FolderKanban
+  LineChart, ListOrdered, TrendingDown, Bell, BellRing, ChevronRight, WifiOff, FolderKanban, ShieldAlert, AlertTriangle
 } from 'lucide-react';
 import { initSocket, disconnectSocket } from '../../lib/socket';
 import { clearAuthSession } from '../../lib/authSession';
@@ -48,6 +48,7 @@ const navSections = [
       { href: '/dashboard/market', label: 'Market', icon: Clock },
       { href: '/dashboard/sectors', label: 'Sectors', icon: BarChart3 },
       { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star },
+      { href: '/dashboard/charts', label: 'Charts', icon: BarChart3 },
     ],
   },
   {
@@ -61,18 +62,19 @@ const navSections = [
       { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered },
       { href: '/dashboard/tradebook', label: 'Trade Book', icon: Briefcase },
       { href: '/dashboard/positions', label: 'Positions', icon: Activity },
-      { href: '/dashboard/charts', label: 'Charts', icon: BarChart3 },
       { href: '/dashboard/alerts', label: 'Alerts', icon: BellRing },
       { href: '/dashboard/queued', label: 'Queued', icon: WifiOff },
       { href: '/dashboard/portfolios', label: 'Portfolios', icon: FolderKanban },
+      { href: '/dashboard/banned-scripts', label: 'Banned Scripts', icon: ShieldAlert },
+      { href: '/dashboard/max-quantity', label: 'Max Quantity', icon: AlertTriangle },
     ],
   },
   {
     title: 'Wealth',
     items: [
       { href: '/dashboard/portfolio', label: 'Holdings', icon: Briefcase },
-      { href: '/dashboard/performance', label: 'Performance', icon: LineChart },
-      { href: '/dashboard/time-loss', label: 'Time Loss', icon: TrendingDown },
+      { href: '/dashboard/performance', label: 'P&L Analytics', icon: LineChart },
+      { href: '/dashboard/time-loss', label: 'Time Decay', icon: TrendingDown },
       { href: '/dashboard/wallet', label: 'Wallet', icon: Wallet },
       { href: '/dashboard/leaderboard', label: 'Leaderboard', icon: Trophy },
       { href: '/dashboard/achievements', label: 'Achievements', icon: Star },
@@ -398,31 +400,7 @@ export default function DashboardLayout({ children }) {
           </button>
         </div>
 
-        {!isStaff && (
-          <div className="mx-3 mb-3 shrink-0 rounded-2xl border border-groww-border bg-groww-bg/80 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-groww-muted">Portfolio</p>
-              <span
-                className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                  marketOpen ? 'bg-groww-primary-light text-groww-primary' : 'bg-red-50 text-groww-loss'
-                }`}
-              >
-                {marketOpen ? 'Market open' : 'Closed'}
-              </span>
-            </div>
-            <p className="text-lg font-bold text-groww-ink">
-              ₹{portfolioValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-            </p>
-            <div className="mt-2 flex justify-between text-xs">
-              <span className="text-groww-muted">
-                Cash ₹{cashBalance.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
-              </span>
-              <span className={dayPnL >= 0 ? 'text-profit font-medium' : 'text-loss font-medium'}>
-                {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })} today
-              </span>
-            </div>
-          </div>
-        )}
+
 
         <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-2">
           {visibleNavSections.map((section) => {

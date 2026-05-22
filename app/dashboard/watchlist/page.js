@@ -385,84 +385,84 @@ export default function WatchlistPage() {
         </div>
       </div>
 
-      <div className="grid lg:grid-cols-4 gap-6">
-        <div className="bg-white rounded-xl border border-gray-200 p-4">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">My Lists</h3>
-
-          <div className="space-y-2 mb-4">
-            {watchlists.map((wl) => (
-              <div
-                key={wl.id}
-                className={`flex items-center justify-between p-3 rounded-lg transition ${
-                  selectedWatchlist?.id === wl.id ? 'bg-groww-primary-light border border-groww-primary-muted' : 'hover:bg-gray-50'
-                }`}
-              >
-                {renamingId === wl.id ? (
-                  <div className="flex flex-1 gap-1 items-center">
-                    <input
-                      type="text"
-                      value={renameValue}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      className="flex-1 px-2 py-1 border rounded text-sm"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleRenameWatchlist(wl.id);
-                        if (e.key === 'Escape') setRenamingId(null);
-                      }}
-                      autoFocus
-                    />
-                    <button type="button" onClick={() => handleRenameWatchlist(wl.id)} className="text-xs text-groww-primary">
-                      Save
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center gap-2 flex-1 cursor-pointer" onClick={() => setSelectedWatchlist(wl)}>
-                      <Star className={`w-4 h-4 ${selectedWatchlist?.id === wl.id ? 'text-groww-primary fill-groww-primary' : 'text-gray-400'}`} />
-                      <span className="font-medium">
-                        {wl.name}
-                        {wl.isDefault ? <span className="text-xs text-gray-400 font-normal"> (Default)</span> : ''}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-sm text-gray-500">{wl.symbols?.length || 0}</span>
-                      <button
-                        type="button"
-                        onClick={() => { setRenamingId(wl.id); setRenameValue(wl.name); }}
-                        className="p-1 text-gray-400 hover:text-groww-primary"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </button>
-                      <button type="button" onClick={() => handleDeleteWatchlist(wl.id)} className="p-1 text-gray-400 hover:text-red-600">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </>
-                )}
+      {/* Watchlist Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+        {watchlists.map((wl) => (
+          <div
+            key={wl.id}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg cursor-pointer whitespace-nowrap transition ${
+              selectedWatchlist?.id === wl.id
+                ? 'bg-groww-primary-light text-groww-primary border border-groww-primary-muted font-semibold'
+                : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium'
+            }`}
+            onClick={() => setSelectedWatchlist(wl)}
+          >
+            {renamingId === wl.id ? (
+              <div className="flex items-center gap-1">
+                <input
+                  type="text"
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  className="px-2 py-0.5 border rounded text-sm w-32"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleRenameWatchlist(wl.id);
+                    if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                  autoFocus
+                />
+                <button type="button" onClick={(e) => { e.stopPropagation(); handleRenameWatchlist(wl.id); }} className="text-xs text-groww-primary">
+                  Save
+                </button>
               </div>
-            ))}
+            ) : (
+              <>
+                <Star className={`w-4 h-4 ${selectedWatchlist?.id === wl.id ? 'fill-groww-primary' : 'text-gray-400'}`} />
+                <span>
+                  {wl.name}
+                  {wl.isDefault && <span className="text-xs opacity-60 ml-1">(Default)</span>}
+                </span>
+                <span className="text-xs opacity-60 px-1">{wl.symbols?.length || 0}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setRenamingId(wl.id); setRenameValue(wl.name); }}
+                  className="p-1 opacity-50 hover:opacity-100"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteWatchlist(wl.id); }}
+                  className="p-1 opacity-50 hover:text-red-600 hover:opacity-100"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
           </div>
-
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="New list name"
-              className="flex-1 px-3 py-2 border rounded-lg text-sm"
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateWatchlist()}
-            />
-            <button
-              onClick={handleCreateWatchlist}
-              disabled={creating}
-              className="p-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark disabled:opacity-50"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
+        ))}
+        
+        {/* Add new list tab */}
+        <div className="flex items-center gap-2 px-3 py-1 border border-dashed border-gray-300 rounded-lg bg-gray-50 shrink-0">
+          <input
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="New list name"
+            className="w-32 px-2 py-1 border rounded text-sm bg-white"
+            onKeyDown={(e) => e.key === 'Enter' && handleCreateWatchlist()}
+          />
+          <button
+            onClick={handleCreateWatchlist}
+            disabled={creating}
+            className="p-1.5 bg-groww-primary text-white rounded hover:bg-groww-primary-dark disabled:opacity-50"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
         </div>
+      </div>
 
-        <div className="lg:col-span-3">
-          {selectedWatchlist ? (
+      <div className="mt-4">
+        {selectedWatchlist ? (
             <div className="bg-white rounded-xl border border-gray-200 p-6">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2">
@@ -679,7 +679,6 @@ export default function WatchlistPage() {
               <p className="text-gray-500">Create a watchlist to get started</p>
             </div>
           )}
-        </div>
       </div>
     </div>
   );

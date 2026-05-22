@@ -169,7 +169,7 @@ export default function DashboardPage() {
 
       {/* Indices strip */}
       {indices.length > 0 && (
-        <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-thin">
+        <div className="flex flex-wrap gap-3 pb-1">
           {indices.map((idx, i) => (
             <div key={i} className="groww-card min-w-[160px] shrink-0 p-4">
               <p className="text-xs font-medium text-groww-muted">{idx.symbol}</p>
@@ -353,52 +353,59 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {activityFeed.length > 0 && (
-        <div className="groww-card p-5">
-          <div className="mb-4 flex items-center gap-2">
-            <Activity className="h-5 w-5 text-groww-primary" />
-            <h2 className="groww-section-title">Recent activity</h2>
-          </div>
-          <div className="max-h-72 space-y-2 overflow-y-auto">
-            {activityFeed.map((item) => (
-              <div key={item.id} className="flex gap-3 rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-groww-ink">{item.title}</p>
-                  <p className="truncate text-groww-muted">{item.description}</p>
-                </div>
-                <span className="shrink-0 text-xs text-groww-muted">
-                  {new Date(item.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
-                </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {activityFeed.length > 0 && (
+          <div className="groww-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-groww-primary" />
+                <h2 className="groww-section-title">Recent activity</h2>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {recentOrders.length > 0 && (
-        <div className="groww-card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="groww-section-title">Recent orders</h2>
-            <Link href="/dashboard/orders" className="groww-link">
-              View all
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {recentOrders.map((o) => (
-              <div key={o.id} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
-                <div>
-                  <span className={`font-bold ${o.order_type === 'BUY' ? 'text-profit' : 'text-loss'}`}>
-                    {o.order_type}
+              <Link href="/dashboard/notifications" className="groww-link">
+                View all
+              </Link>
+            </div>
+            <div className="max-h-72 space-y-2 overflow-y-auto">
+              {activityFeed.map((item) => (
+                <div key={item.id} className="flex gap-3 rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-medium text-groww-ink">{item.title}</p>
+                    <p className="truncate text-groww-muted">{item.description}</p>
+                  </div>
+                  <span className="shrink-0 text-xs text-groww-muted">
+                    {new Date(item.timestamp).toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
-                  <span className="ml-2 font-medium text-groww-ink">{o.symbol}</span>
-                  <span className="ml-2 text-groww-muted">× {o.qty}</span>
                 </div>
-                <span className="capitalize text-groww-muted">{o.status}</span>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {recentOrders.length > 0 && (
+          <div className="groww-card p-5">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="groww-section-title">Recent orders</h2>
+              <Link href="/dashboard/orders" className="groww-link">
+                View all
+              </Link>
+            </div>
+            <div className="space-y-2">
+              {recentOrders.map((o) => (
+                <div key={o.id} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5 text-sm">
+                  <div>
+                    <span className={`font-bold ${o.order_type === 'BUY' ? 'text-profit' : 'text-loss'}`}>
+                      {o.order_type}
+                    </span>
+                    <span className="ml-2 font-medium text-groww-ink">{o.symbol}</span>
+                    <span className="ml-2 text-groww-muted">× {o.qty}</span>
+                  </div>
+                  <span className="capitalize text-groww-muted">{o.status}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="rounded-2xl border border-groww-primary-muted bg-groww-primary-light/50 px-4 py-3 text-sm text-groww-ink">
         <strong className="font-semibold text-groww-primary">Note:</strong> Paper trading for education only.{' '}

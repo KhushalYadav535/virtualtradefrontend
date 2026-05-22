@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { trading, portfolio, market, offline as offlineApi } from '../lib/api';
-import { useAuthStore, usePortfolioMgmtStore } from '../lib/store';
+import { useAuthStore, usePortfolioMgmtStore, usePortfolioStore } from '../lib/store';
 import { calculateOrderCharges } from '../lib/orderCharges';
 import { getTradingPrefsFromUser } from '../lib/tradingPrefs';
 import { playOrderSuccess, playOrderError } from '../lib/sounds';
@@ -37,6 +37,7 @@ export default function TradeOrderPanel({
 }) {
   const { user } = useAuthStore();
   const { activePortfolioId } = usePortfolioMgmtStore();
+  const summary = usePortfolioStore((s) => s.summary);
   const prefs = getTradingPrefsFromUser(user);
   const lotPresets = prefs.lotQuickButtons?.length ? prefs.lotQuickButtons : [1, 2, 5, 10];
 
@@ -701,6 +702,34 @@ export default function TradeOrderPanel({
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
               Confirm
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Portfolio Summary block below action buttons */}
+      {summary && (
+        <div className="mt-6 pt-4 border-t border-gray-200">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Portfolio Info</h4>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${marketStatus?.isOpen ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              {marketStatus?.isOpen ? 'Market Open' : 'Closed'}
+            </span>
+          </div>
+          <div className="bg-gray-50 p-3 rounded-lg border border-gray-100">
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm text-gray-600">Current Value</span>
+              <span className="font-semibold text-gray-800">₹{(summary.totalValue ?? summary.portfolioValue ?? summary.cashBalance ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-sm text-gray-600">Cash Balance</span>
+              <span className="font-medium text-gray-700">₹{(summary.cashBalance ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-600">Today&apos;s P&L</span>
+              <span className={`font-medium ${(summary.dayPnL ?? 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                {(summary.dayPnL ?? 0) >= 0 ? '+' : ''}₹{Math.abs(summary.dayPnL ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </span>
+            </div>
           </div>
         </div>
       )}
