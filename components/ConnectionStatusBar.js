@@ -8,9 +8,9 @@ export default function ConnectionStatusBar() {
   const state = useConnectionStore();
   const label = connectionLabel(state);
   const isLive = state.socketStatus === 'connected' && state.isOnline;
-  const isBad = !state.isOnline || !state.apiReachable;
+  const isBad = !state.isOnline || !state.apiReachable || state.backendWaking;
 
-  if (isLive && !state.lowDataMode) return null;
+  if (isLive && !state.lowDataMode && state.apiReachable && !state.backendWaking) return null;
 
   return (
     <div

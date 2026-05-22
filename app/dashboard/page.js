@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { portfolio, market, leaderboard as leaderboardApi, trading, activity } from '../../lib/api';
+import { market, leaderboard as leaderboardApi, trading, activity } from '../../lib/api';
 import { useAuthStore, usePortfolioStore, useMarketStore } from '../../lib/store';
-import { loadCachedPortfolioSummary, savePortfolioSummaryCache } from '../../lib/portfolioCache';
+import { loadCachedPortfolioSummary } from '../../lib/portfolioCache';
 import { initSocket } from '../../lib/socket';
 import { isStaffRole } from '../../lib/roles';
 import MarketCountdown from '../../components/MarketCountdown';
@@ -84,19 +84,8 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     const cached = loadCachedPortfolioSummary();
-    if (cached) {
-      setSummary(cached);
-      setLoading(false);
-    }
-    try {
-      const summaryRes = await portfolio.getSummary();
-      setSummary(summaryRes.data);
-      savePortfolioSummaryCache(summaryRes.data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+    if (cached) setSummary(cached);
+    setLoading(false);
 
     Promise.all([
       market.getIndices(),
@@ -111,7 +100,7 @@ export default function DashboardPage() {
         setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
         setActivityFeed(Array.isArray(activityRes?.data) ? activityRes.data : []);
       })
-      .catch((err) => console.error(err));
+      .catch(() => {});
 
     loadMarketStatus();
   };

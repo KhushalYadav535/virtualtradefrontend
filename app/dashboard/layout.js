@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuthStore, usePortfolioStore, useMarketStore, usePortfolioMgmtStore } from '../../lib/store';
 import { getDefaultDashboardPath, isStaffOnlyPath, isStaffRole } from '../../lib/roles';
@@ -11,7 +11,10 @@ import {
 } from 'lucide-react';
 import { initSocket, disconnectSocket } from '../../lib/socket';
 import { clearAuthSession } from '../../lib/authSession';
-import { market, auth, portfolio, notifications as notificationsApi, system, offline as offlineApi, portfoliosMgmt } from '../../lib/api';
+import {
+  market, auth, portfolio, notifications as notificationsApi, system, offline as offlineApi,
+  portfoliosMgmt, waitForBackend, isApiTimeout
+} from '../../lib/api';
 import ConnectionStatusBar from '../../components/ConnectionStatusBar';
 import { useConnectionStore } from '../../lib/connectionStore';
 import { hydrateMarketFromCache, saveOfflineSnapshot } from '../../lib/offlineCache';
@@ -102,16 +105,30 @@ export default function DashboardLayout({ children }) {
   const { user, init, setUser, authReady } = useAuthStore();
   const { summary, setSummary } = usePortfolioStore();
   const [authChecked, setAuthChecked] = useState(false);
+  const sessionBootstrapped = useRef(false);
 
   const refreshPortfolioSummary = async () => {
     const token = localStorage.getItem('token');
     if (!token) return;
+    const conn = useConnectionStore.getState();
+    conn.setBackendWaking(true);
     try {
+      const awake = await waitForBackend(45000);
+      if (!awake) {
+        conn.setApiReachable(false);
+        return;
+      }
       const { data } = await portfolio.getSummary();
       setSummary(data);
       savePortfolioSummaryCache(data);
+      conn.setApiReachable(true);
     } catch (err) {
-      console.error(err);
+      if (!isApiTimeout(err)) {
+        console.warn('Portfolio refresh:', err?.response?.data?.error || err.message);
+      }
+      useConnectionStore.getState().setApiReachable(false);
+    } finally {
+      useConnectionStore.getState().setBackendWaking(false);
     }
   };
 
@@ -178,11 +195,13 @@ export default function DashboardLayout({ children }) {
   }, [authReady, authChecked]);
 
   useEffect(() => {
-    if (!authReady || !authChecked) return;
+    if (!authReady || !authChecked || sessionBootstrapped.current) return;
     if (!localStorage.getItem('token')) {
       router.replace('/?session=expired');
       return;
     }
+    sessionBootstrapped.current = true;
+
     const prefs = mergeTradingPrefs(
       user?.tradingPrefs || JSON.parse(localStorage.getItem('tradingPrefs') || 'null')
     );
@@ -199,7 +218,7 @@ export default function DashboardLayout({ children }) {
       }
       initSocket();
     });
-  }, [pathname, authReady, authChecked, user?.role, router]);
+  }, [authReady, authChecked, user?.role, router]);
 
   useEffect(() => {
     const onOnline = () => {
@@ -249,8 +268,8 @@ export default function DashboardLayout({ children }) {
       try {
         const { data } = await market.getStatus();
         setMarketOpen(data.isOpen);
-      } catch (err) {
-        console.error(err);
+      } catch {
+        /* non-blocking */
       }
     };
     checkMarketStatus();
