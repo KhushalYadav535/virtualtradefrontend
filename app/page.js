@@ -19,6 +19,9 @@ function HomeContent() {
   const [devOtpHint, setDevOtpHint] = useState('');
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showForceReset, setShowForceReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get('session') === 'expired';
@@ -34,6 +37,11 @@ function HomeContent() {
     }
     if (data.requiresVerification) {
       router.push(`/verify-email?email=${encodeURIComponent(data.email || form.email)}`);
+      return true;
+    }
+    if (data.forcePasswordReset) {
+      setResetEmail(data.email);
+      setShowForceReset(true);
       return true;
     }
     if (!getApiBaseUrl()) {
@@ -119,6 +127,23 @@ function HomeContent() {
         errorMessage = `Cannot reach API (${apiUrl}). Check network or backend URL on Vercel.`;
       }
       setError(errorMessage);
+    }
+  };
+
+  const handleForceResetSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    try {
+      await auth.resetInitialPassword({ email: resetEmail, oldPassword: form.password, newPassword });
+      setShowForceReset(false);
+      setNewPassword('');
+      // Now login with new password
+      setForm(prev => ({ ...prev, password: newPassword }));
+      const payload = { ...form, password: newPassword, deviceFingerprint: getDeviceFingerprint(), deviceLabel: 'Web browser' };
+      const { data } = await auth.login(payload);
+      finishAuth(data);
+    } catch (err) {
+      setError(err.response?.data?.error || err.response?.data?.message || 'Password reset failed');
     }
   };
 
@@ -353,6 +378,46 @@ function HomeContent() {
             >
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {showForceReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl">
+            <h2 className="mb-2 text-2xl font-bold text-gray-900">Mandatory Password Update</h2>
+            <p className="mb-6 text-sm text-gray-600">Your administrator requires you to update your password before you can log in.</p>
+            {error && (
+              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-600">
+                {error}
+              </div>
+            )}
+            <form onSubmit={handleForceResetSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">New Password</label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    className="w-full rounded-xl border border-gray-300 p-3 outline-none focus:border-groww-primary focus:ring-1 focus:ring-groww-primary"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
+                </div>
+              </div>
+              <button type="submit" className="groww-btn-primary w-full py-3">
+                Update Password & Login
+              </button>
+            </form>
           </div>
         </div>
       )}

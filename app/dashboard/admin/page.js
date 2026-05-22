@@ -50,6 +50,11 @@ export default function AdminPage() {
   const [segments, setSegments] = useState([]);
   const [abTests, setAbTests] = useState(null);
   const [ticketReply, setTicketReply] = useState({});
+  const [showCreateStudent, setShowCreateStudent] = useState(false);
+  const [newStudent, setNewStudent] = useState({ name: '', email: '', password: '', batchId: '' });
+  const [customMarketData, setCustomMarketData] = useState({ customIndices: [], customStocks: [], removedStocks: [] });
+  const [newIndex, setNewIndex] = useState({ label: '', base: '' });
+  const [newStock, setNewStock] = useState({ symbol: '', name: '', lotSize: '' });
   const isAdmin = user?.role === 'admin';
 
   const loadData = async () => {
@@ -80,7 +85,8 @@ export default function AdminPage() {
         isAdmin ? admin.getRevenue() : Promise.resolve({ data: null }),
         isAdmin ? admin.getTickets() : Promise.resolve({ data: [] }),
         isAdmin ? admin.getSegmentation() : Promise.resolve({ data: [] }),
-        isAdmin ? admin.getAbTests() : Promise.resolve({ data: null })
+        isAdmin ? admin.getAbTests() : Promise.resolve({ data: null }),
+        isAdmin ? admin.getCustomMarketData() : Promise.resolve({ data: { customIndices: [], customStocks: [], removedStocks: [] } })
       ]);
 
       const pick = (i, fallback) =>
@@ -95,6 +101,7 @@ export default function AdminPage() {
         setTickets(pick(5, []));
         setSegments(pick(6, []));
         setAbTests(pick(7, null));
+        setCustomMarketData(pick(8, { customIndices: [], customStocks: [], removedStocks: [] }));
       }
 
       const failed = optional.filter((r) => r.status === 'rejected');
@@ -178,6 +185,61 @@ export default function AdminPage() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleCreateStudent = async (e) => {
+    e.preventDefault();
+    try {
+      await admin.createStudent(newStudent);
+      setShowCreateStudent(false);
+      setNewStudent({ name: '', email: '', password: '', batchId: '' });
+      loadData();
+      alert('Student created successfully. They must reset password on first login.');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to create student');
+    }
+  };
+
+  const handleAddFunds = async (student) => {
+    const amount = prompt(`Add funds to ${student.name}'s wallet? Enter amount:`, '100000');
+    if (!amount || isNaN(amount)) return;
+    try {
+      await admin.addFunds(student.id, amount);
+      loadData();
+      if (selectedStudent === student.id) viewStudent(student.id);
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add funds');
+    }
+  };
+
+  const handleSaveMarketData = async (updatedData) => {
+    try {
+      await admin.updateCustomMarketData(updatedData);
+      setCustomMarketData(updatedData);
+      alert('Market Data updated');
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to update Market Data');
+    }
+  };
+
+  const handleAddCustomIndex = () => {
+    if (!newIndex.label || !newIndex.base) return;
+    const updated = {
+      ...customMarketData,
+      customIndices: [...(customMarketData.customIndices || []), { ...newIndex, base: Number(newIndex.base) }]
+    };
+    handleSaveMarketData(updated);
+    setNewIndex({ label: '', base: '' });
+  };
+
+  const handleAddCustomStock = () => {
+    if (!newStock.symbol) return;
+    const updated = {
+      ...customMarketData,
+      customStocks: [...(customMarketData.customStocks || []), { ...newStock, lotSize: Number(newStock.lotSize) || 1 }]
+    };
+    handleSaveMarketData(updated);
+    setNewStock({ symbol: '', name: '', lotSize: '' });
   };
 
   const handleActivateStudent = async (userId) => {
@@ -296,6 +358,7 @@ export default function AdminPage() {
           <>
             <button className={`pb-3 font-medium ${adminTab === 'lots' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('lots')}>Lot Master</button>
             <button className={`pb-3 font-medium ${adminTab === 'ops' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('ops')}>Ops & Revenue</button>
+            <button className={`pb-3 font-medium ${adminTab === 'marketData' ? 'text-groww-primary border-b-2 border-groww-primary' : 'text-gray-500'}`} onClick={() => setAdminTab('marketData')}>Market Data</button>
           </>
         )}
       </div>
@@ -305,9 +368,16 @@ export default function AdminPage() {
         <div className="lg:col-span-2">
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
             <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center gap-3">
-                <Users className="w-5 h-5 text-groww-primary" />
-                <h2 className="text-lg font-semibold text-gray-800">All Students ({students.length})</h2>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-groww-primary" />
+                  <h2 className="text-lg font-semibold text-gray-800">All Students ({students.length})</h2>
+                </div>
+                {isAdmin && (
+                  <button onClick={() => setShowCreateStudent(true)} className="px-4 py-2 bg-groww-primary text-white rounded-lg text-sm font-medium hover:bg-groww-primary-dark">
+                    + Create Student
+                  </button>
+                )}
               </div>
             </div>
 
@@ -358,6 +428,15 @@ export default function AdminPage() {
                           >
                             <RefreshCw className="w-4 h-4" />
                           </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleAddFunds(student)}
+                              className="p-2 text-green-600 hover:bg-green-50 rounded-lg font-bold"
+                              title="Add Funds"
+                            >
+                              $
+                            </button>
+                          )}
                           {student.is_active === false ? (
                             <button
                               onClick={() => handleActivateStudent(student.id)}
@@ -712,7 +791,87 @@ export default function AdminPage() {
           </div>
         </div>
       )}
+      {adminTab === 'marketData' && isAdmin && (
+        <div className="grid lg:grid-cols-2 gap-6">
+          <div className="bg-white border rounded-xl p-5">
+            <h2 className="font-semibold text-gray-800 mb-3">Custom Indices</h2>
+            <div className="flex gap-2 mb-4">
+              <input placeholder="Index Name (e.g. CUSTOM_IT)" className="border p-2 rounded flex-1" value={newIndex.label} onChange={(e) => setNewIndex({ ...newIndex, label: e.target.value })} />
+              <input type="number" placeholder="Base Value" className="border p-2 rounded w-32" value={newIndex.base} onChange={(e) => setNewIndex({ ...newIndex, base: e.target.value })} />
+              <button className="bg-groww-primary text-white px-4 rounded hover:bg-groww-primary-dark" onClick={handleAddCustomIndex}>Add</button>
+            </div>
+            <ul className="space-y-2">
+              {customMarketData.customIndices?.map((idx, i) => (
+                <li key={i} className="flex justify-between items-center bg-gray-50 p-2 rounded border">
+                  <span className="font-medium text-gray-800">{idx.label}</span>
+                  <span className="text-sm text-gray-600">Base: {idx.base}</span>
+                </li>
+              ))}
+              {(!customMarketData.customIndices || customMarketData.customIndices.length === 0) && (
+                <p className="text-sm text-gray-500">No custom indices.</p>
+              )}
+            </ul>
+          </div>
 
+          <div className="bg-white border rounded-xl p-5">
+            <h2 className="font-semibold text-gray-800 mb-3">Custom Stocks</h2>
+            <div className="flex gap-2 mb-4">
+              <input placeholder="Symbol (e.g. MOCK_RELIANCE)" className="border p-2 rounded flex-1" value={newStock.symbol} onChange={(e) => setNewStock({ ...newStock, symbol: e.target.value.toUpperCase() })} />
+              <input placeholder="Name" className="border p-2 rounded flex-1" value={newStock.name} onChange={(e) => setNewStock({ ...newStock, name: e.target.value })} />
+              <input type="number" placeholder="Lot Size" className="border p-2 rounded w-24" value={newStock.lotSize} onChange={(e) => setNewStock({ ...newStock, lotSize: e.target.value })} />
+              <button className="bg-groww-primary text-white px-4 rounded hover:bg-groww-primary-dark" onClick={handleAddCustomStock}>Add</button>
+            </div>
+            <ul className="space-y-2">
+              {customMarketData.customStocks?.map((stk, i) => (
+                <li key={i} className="flex justify-between items-center bg-gray-50 p-2 rounded border">
+                  <div>
+                    <span className="font-bold text-gray-800 block">{stk.symbol}</span>
+                    <span className="text-xs text-gray-500">{stk.name}</span>
+                  </div>
+                  <span className="text-sm text-gray-600">Lot: {stk.lotSize}</span>
+                </li>
+              ))}
+              {(!customMarketData.customStocks || customMarketData.customStocks.length === 0) && (
+                <p className="text-sm text-gray-500">No custom stocks.</p>
+              )}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {showCreateStudent && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="font-bold text-lg">Create New Student</h3>
+              <button onClick={() => setShowCreateStudent(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <form onSubmit={handleCreateStudent} className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                <input required className="w-full border p-2 rounded" value={newStudent.name} onChange={(e) => setNewStudent({...newStudent, name: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input required type="email" className="w-full border p-2 rounded" value={newStudent.email} onChange={(e) => setNewStudent({...newStudent, email: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Temporary Password</label>
+                <input required minLength="8" className="w-full border p-2 rounded" value={newStudent.password} onChange={(e) => setNewStudent({...newStudent, password: e.target.value})} />
+                <p className="text-xs text-amber-600 mt-1">User will be forced to reset this password on their first login.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Assign to Batch (Optional)</label>
+                <select className="w-full border p-2 rounded" value={newStudent.batchId} onChange={(e) => setNewStudent({...newStudent, batchId: e.target.value})}>
+                  <option value="">No Batch</option>
+                  {batches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <button type="submit" className="w-full bg-groww-primary text-white py-2 rounded font-medium hover:bg-groww-primary-dark">Create Student</button>
+            </form>
+          </div>
+        </div>
+      )}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
         <AlertCircle className="w-5 h-5 text-amber-500 mt-0.5" />
         <div>
