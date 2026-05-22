@@ -256,6 +256,7 @@ function HomeContent() {
                   className="groww-input"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  autoComplete="name"
                   required
                 />
               )}
@@ -267,6 +268,7 @@ function HomeContent() {
                     className="groww-input"
                     value={form.email}
                     onChange={(e) => setForm({ ...form, email: e.target.value })}
+                    autoComplete="email"
                     required
                   />
                   <div className="relative">
@@ -276,6 +278,7 @@ function HomeContent() {
                       className="groww-input pr-12"
                       value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      autoComplete="current-password"
                       required
                     />
                     <button
@@ -295,6 +298,7 @@ function HomeContent() {
                     className="groww-input"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                    autoComplete="tel"
                     required
                   />
                   {otpSent && (
@@ -305,6 +309,7 @@ function HomeContent() {
                       value={otp}
                       onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       maxLength={6}
+                      autoComplete="one-time-code"
                       required
                     />
                   )}
@@ -315,6 +320,7 @@ function HomeContent() {
                       className="groww-input"
                       value={form.password}
                       onChange={(e) => setForm({ ...form, password: e.target.value })}
+                      autoComplete="new-password"
                       required
                     />
                   )}
