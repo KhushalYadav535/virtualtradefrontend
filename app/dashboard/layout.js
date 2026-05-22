@@ -15,8 +15,27 @@ import { market, auth, portfolio, notifications as notificationsApi, system, off
 import ConnectionStatusBar from '../../components/ConnectionStatusBar';
 import { useConnectionStore } from '../../lib/connectionStore';
 import { hydrateMarketFromCache, saveOfflineSnapshot } from '../../lib/offlineCache';
+import { loadCachedPortfolioSummary, savePortfolioSummaryCache } from '../../lib/portfolioCache';
 import { mergeTradingPrefs } from '../../lib/tradingPrefs';
 import { navLabel, getLocaleFromUser } from '../../lib/i18n';
+
+const PROFILE_SYNC_MS = 8000;
+
+function deferNonCritical(fn) {
+  if (typeof window === 'undefined') return;
+  const run = () => {
+    try {
+      fn();
+    } catch {
+      /* ignore */
+    }
+  };
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(run, { timeout: 2500 });
+  } else {
+    setTimeout(run, 0);
+  }
+}
 
 const navSections = [
   {
@@ -90,6 +109,7 @@ export default function DashboardLayout({ children }) {
     try {
       const { data } = await portfolio.getSummary();
       setSummary(data);
+      savePortfolioSummaryCache(data);
     } catch (err) {
       console.error(err);
     }
@@ -103,9 +123,20 @@ export default function DashboardLayout({ children }) {
       return;
     }
 
+    const cachedSummary = loadCachedPortfolioSummary();
+    if (cachedSummary) setSummary(cachedSummary);
+    hydrateMarketFromCache();
+
+    if (useAuthStore.getState().user) {
+      setAuthChecked(true);
+    }
+
     const syncProfile = async () => {
+      const timeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('profile_timeout')), PROFILE_SYNC_MS);
+      });
       try {
-        const { data } = await auth.getProfile();
+        const { data } = await Promise.race([auth.getProfile(), timeout]);
         if (data?.user) setUser(data.user);
       } catch (err) {
         const stillHasToken = localStorage.getItem('token');
@@ -113,13 +144,15 @@ export default function DashboardLayout({ children }) {
           router.replace('/?session=expired');
           return;
         }
-        console.warn('Profile sync failed, using cached session:', err?.response?.data?.error || err.message);
+        if (err?.message !== 'profile_timeout') {
+          console.warn('Profile sync failed, using cached session:', err?.response?.data?.error || err.message);
+        }
       } finally {
         setAuthChecked(true);
       }
     };
     syncProfile();
-  }, [init, router, setUser]);
+  }, [init, router, setUser, setSummary]);
 
   useEffect(() => {
     if (!authReady || !authChecked || !user?.role) return;
@@ -135,11 +168,13 @@ export default function DashboardLayout({ children }) {
 
   useEffect(() => {
     if (!authReady || !authChecked || !localStorage.getItem('token')) return;
-    portfoliosMgmt.list().then(({ data }) => {
-      const p = usePortfolioMgmtStore.getState();
-      p.setPortfolios(data.portfolios || []);
-      if (data.activeId) p.setActivePortfolioId(data.activeId);
-    }).catch(() => {});
+    deferNonCritical(() => {
+      portfoliosMgmt.list().then(({ data }) => {
+        const p = usePortfolioMgmtStore.getState();
+        p.setPortfolios(data.portfolios || []);
+        if (data.activeId) p.setActivePortfolioId(data.activeId);
+      }).catch(() => {});
+    });
   }, [authReady, authChecked]);
 
   useEffect(() => {
@@ -148,19 +183,22 @@ export default function DashboardLayout({ children }) {
       router.replace('/?session=expired');
       return;
     }
-    if (!isStaffRole(user?.role)) {
-      refreshPortfolioSummary();
-      notificationsApi.getUnreadCount()
-        .then(({ data }) => setUnreadNotifications(data.count || 0))
-        .catch(() => {});
-    }
-    hydrateMarketFromCache();
-    initSocket();
     const prefs = mergeTradingPrefs(
       user?.tradingPrefs || JSON.parse(localStorage.getItem('tradingPrefs') || 'null')
     );
     localStorage.setItem('tradingPrefs', JSON.stringify(prefs));
     useConnectionStore.getState().setLowDataMode(prefs.lowDataMode);
+
+    deferNonCritical(() => {
+      if (!isStaffRole(user?.role)) {
+        refreshPortfolioSummary();
+        notificationsApi
+          .getUnreadCount()
+          .then(({ data }) => setUnreadNotifications(data.count || 0))
+          .catch(() => {});
+      }
+      initSocket();
+    });
   }, [pathname, authReady, authChecked, user?.role, router]);
 
   useEffect(() => {
@@ -183,7 +221,7 @@ export default function DashboardLayout({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!authReady || !localStorage.getItem('token')) return undefined;
+    if (!authReady || !authChecked || !localStorage.getItem('token')) return undefined;
     const syncSnapshot = () => {
       system
         .getCacheSnapshot()
@@ -197,10 +235,10 @@ export default function DashboardLayout({ children }) {
         })
         .catch(() => useConnectionStore.getState().setApiReachable(false));
     };
-    syncSnapshot();
+    deferNonCritical(syncSnapshot);
     const id = setInterval(syncSnapshot, 120000);
     return () => clearInterval(id);
-  }, [authReady]);
+  }, [authReady, authChecked]);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {

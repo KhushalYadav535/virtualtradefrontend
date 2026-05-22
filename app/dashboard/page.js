@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { portfolio, market, leaderboard as leaderboardApi, trading, activity } from '../../lib/api';
 import { useAuthStore, usePortfolioStore, useMarketStore } from '../../lib/store';
+import { loadCachedPortfolioSummary, savePortfolioSummaryCache } from '../../lib/portfolioCache';
 import { initSocket } from '../../lib/socket';
 import { isStaffRole } from '../../lib/roles';
 import MarketCountdown from '../../components/MarketCountdown';
@@ -82,28 +83,40 @@ export default function DashboardPage() {
   };
 
   const loadData = async () => {
+    const cached = loadCachedPortfolioSummary();
+    if (cached) {
+      setSummary(cached);
+      setLoading(false);
+    }
     try {
-      const [summaryRes, indicesRes, leaderboardRes, ordersRes, activityRes] = await Promise.all([
-        portfolio.getSummary(),
-        market.getIndices(),
-        leaderboardApi.get({ limit: 5 }),
-        trading.getOrders(5).catch(() => ({ data: [] })),
-        activity.getFeed(12).catch(() => ({ data: [] }))
-      ]);
+      const summaryRes = await portfolio.getSummary();
       setSummary(summaryRes.data);
-      setIndices(indicesRes.data);
-      setTopLeaderboard(leaderboardRes.data.slice(0, 5));
-      setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
-      setActivityFeed(Array.isArray(activityRes?.data) ? activityRes.data : []);
-      await loadMarketStatus();
+      savePortfolioSummaryCache(summaryRes.data);
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
+
+    Promise.all([
+      market.getIndices(),
+      leaderboardApi.get({ limit: 5 }),
+      trading.getOrders(5).catch(() => ({ data: [] })),
+      activity.getFeed(12).catch(() => ({ data: [] }))
+    ])
+      .then(([indicesRes, leaderboardRes, ordersRes, activityRes]) => {
+        setIndices(indicesRes.data || []);
+        setStoreIndices(indicesRes.data || []);
+        setTopLeaderboard((leaderboardRes.data || []).slice(0, 5));
+        setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
+        setActivityFeed(Array.isArray(activityRes?.data) ? activityRes.data : []);
+      })
+      .catch((err) => console.error(err));
+
+    loadMarketStatus();
   };
 
-  if (!authReady || isStaffRole(user?.role) || loading) {
+  if (!authReady || isStaffRole(user?.role) || (loading && !summary)) {
     return (
       <div className="flex h-64 items-center justify-center">
         <div className="groww-spinner" />

@@ -1,9 +1,9 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getDeviceFingerprint } from '../lib/secureStorage';
-import { auth } from '../lib/api';
+import { auth, warmBackend } from '../lib/api';
 import { getApiBaseUrl } from '../lib/apiBase';
 import { persistLoginSession } from '../lib/authSession';
 import { TrendingUp, Shield, BarChart3, ArrowRight, DollarSign, Eye, EyeOff, Sparkles } from 'lucide-react';
@@ -22,6 +22,10 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionExpired = searchParams.get('session') === 'expired';
+
+  useEffect(() => {
+    warmBackend();
+  }, []);
 
   const finishAuth = (data) => {
     if (data.requires2FA) {
