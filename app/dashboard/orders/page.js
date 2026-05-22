@@ -5,9 +5,9 @@ import { trading } from '../../../lib/api';
 import { usePortfolioStore, useMarketStore } from '../../../lib/store';
 import { portfolio } from '../../../lib/api';
 import { Loader2, XCircle } from 'lucide-react';
-
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
+  const [counts, setCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(null);
   const [modifying, setModifying] = useState(null);
@@ -20,13 +20,17 @@ export default function OrdersPage() {
   const [productFilter, setProductFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('time');
+  const [validityFilter, setValidityFilter] = useState('all');
+  const [lotFilter, setLotFilter] = useState('all');
+  const [detailOrder, setDetailOrder] = useState(null);
+  const [modifyLots, setModifyLots] = useState('');
   const setSummary = usePortfolioStore((s) => s.setSummary);
-  const { prices } = useMarketStore();
 
   const loadOrders = async () => {
     try {
-      const { data } = await trading.getOrders(200);
-      setOrders(data);
+      const { data } = await trading.getOrdersBook({ limit: 300 });
+      setOrders(data.orders || []);
+      setCounts(data.counts || {});
     } catch (err) {
       console.error(err);
     } finally {
@@ -54,10 +58,20 @@ export default function OrdersPage() {
 
   const openModify = (order) => {
     setModifying(order);
+    const ls = order.lotSize || 1;
     setModifyQty(String(order.qty));
+    setModifyLots(String(order.lots ?? order.qty / ls));
     setModifyPrice(order.price != null && order.price !== '' ? String(order.price) : '');
     setModifyTrigger(order.trigger_price != null && order.trigger_price !== '' ? String(order.trigger_price) : '');
     setModifyErr('');
+  };
+
+  const onModifyLotsChange = (lotsStr) => {
+    setModifyLots(lotsStr);
+    if (!modifying) return;
+    const ls = modifying.lotSize || 1;
+    const lots = parseFloat(lotsStr);
+    if (Number.isFinite(lots) && lots > 0) setModifyQty(String(Math.round(lots * ls)));
   };
 
   const submitModify = async () => {
@@ -100,17 +114,44 @@ export default function OrdersPage() {
     return 'text-red-600 bg-red-50';
   };
 
+  const orderTags = (o) => {
+    const tags = [];
+    if (o.is_amo) tags.push({ label: 'AMO', className: 'bg-purple-100 text-purple-800' });
+    if (o.validity === 'GTT') tags.push({ label: 'GTT', className: 'bg-indigo-100 text-indigo-800' });
+    if (o.validity === 'IOC') tags.push({ label: 'IOC', className: 'bg-sky-100 text-sky-800' });
+    return tags;
+  };
+
+  const todayStr = new Date().toISOString().slice(0, 10);
   const filteredOrders = orders.filter((o) => {
-    if (statusFilter !== 'all' && o.status !== statusFilter) return false;
-    if (productFilter !== 'all' && o.product_type !== productFilter) return false;
+    if (statusFilter === 'executed_today') {
+      if (o.status !== 'executed') return false;
+      const d = String(o.executedAt || o.executed_at || o.createdAt || o.created_at || '').slice(0, 10);
+      if (d !== todayStr) return false;
+    } else if (statusFilter !== 'all' && o.status !== statusFilter) return false;
+    const pt = o.productType || o.product_type;
+    if (productFilter !== 'all' && pt !== productFilter) return false;
+    if (validityFilter === 'amo' && !o.is_amo) return false;
+    if (validityFilter === 'gtt' && o.validity !== 'GTT') return false;
+    if (validityFilter === 'ioc' && o.validity !== 'IOC') return false;
+    if (lotFilter === 'eq1' && (o.lotSize || 1) !== 1) return false;
+    if (lotFilter === 'gt1' && (o.lotSize || 1) <= 1) return false;
     if (searchQuery && !o.symbol.toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   }).sort((a, b) => {
-    if (sortBy === 'time') return new Date(b.created_at || b.timestamp).getTime() - new Date(a.created_at || a.timestamp).getTime();
+    if (sortBy === 'time') {
+      return new Date(b.createdAt || b.created_at || b.timestamp).getTime() - new Date(a.createdAt || a.created_at || a.timestamp).getTime();
+    }
     if (sortBy === 'stock') return a.symbol.localeCompare(b.symbol);
-    if (sortBy === 'lots') return b.qty - a.qty;
+    if (sortBy === 'lots') return (b.lots ?? b.qty) - (a.lots ?? a.qty);
     return 0;
   });
+
+  const tabCount = (id) => {
+    if (id === 'all') return counts.all;
+    if (id === 'executed_today') return counts.executedToday;
+    return counts[id];
+  };
 
   if (loading) {
     return (
@@ -132,6 +173,7 @@ export default function OrdersPage() {
           { id: 'all', label: 'All' },
           { id: 'pending', label: 'Pending' },
           { id: 'executed', label: 'Executed' },
+          { id: 'executed_today', label: 'Today' },
           { id: 'cancelled', label: 'Cancelled' },
           { id: 'rejected', label: 'Rejected' }
         ].map((tab) => (
@@ -144,11 +186,32 @@ export default function OrdersPage() {
             }`}
           >
             {tab.label}
+            {tabCount(tab.id) != null ? ` (${tabCount(tab.id)})` : ''}
           </button>
         ))}
         
         <div className="w-px bg-gray-300 mx-2" />
         
+        {[
+          { id: 'all', label: 'All types' },
+          { id: 'amo', label: 'AMO' },
+          { id: 'gtt', label: 'GTT' },
+          { id: 'ioc', label: 'IOC' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setValidityFilter(tab.id)}
+            className={`px-3 py-2 rounded-lg text-sm font-medium ${
+              validityFilter === tab.id ? 'bg-indigo-600 text-white' : 'bg-white border border-gray-200 text-groww-muted'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+
+        <div className="w-px bg-gray-300 mx-2" />
+
         {['all', 'CNC', 'MIS', 'NRML'].map((tab) => (
           <button
             key={`p-${tab}`}
@@ -182,6 +245,15 @@ export default function OrdersPage() {
             <option value="stock">Stock</option>
             <option value="lots">Lots / Qty</option>
           </select>
+          <select
+            value={lotFilter}
+            onChange={(e) => setLotFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 outline-none focus:border-groww-primary bg-white text-gray-700 font-medium cursor-pointer"
+          >
+            <option value="all">All lot sizes</option>
+            <option value="eq1">Lot size 1</option>
+            <option value="gt1">Lot size &gt; 1</option>
+          </select>
         </div>
       </div>
 
@@ -194,6 +266,7 @@ export default function OrdersPage() {
                 <th className="text-left p-4 font-medium text-groww-muted">Symbol</th>
                 <th className="text-left p-4 font-medium text-groww-muted">Type</th>
                 <th className="text-left p-4 font-medium text-groww-muted">Mode</th>
+                <th className="text-left p-4 font-medium text-groww-muted">Product</th>
                 <th className="text-right p-4 font-medium text-groww-muted">Qty</th>
                 <th className="text-right p-4 font-medium text-groww-muted">Price</th>
                 <th className="text-left p-4 font-medium text-groww-muted">Status</th>
@@ -203,7 +276,7 @@ export default function OrdersPage() {
             <tbody>
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-groww-muted">
+                  <td colSpan={9} className="p-8 text-center text-groww-muted">
                     No orders matching your criteria.
                   </td>
                 </tr>
@@ -211,9 +284,19 @@ export default function OrdersPage() {
                 filteredOrders.map((order) => (
                   <tr key={order.id} className="border-b border-groww-border/70 hover:bg-groww-bg">
                     <td className="p-4 text-groww-muted">
-                      {new Date(order.created_at).toLocaleString('en-IN')}
+                      <div>{new Date(order.createdAt || order.created_at).toLocaleString('en-IN')}</div>
+                      {order.status === 'executed' && (order.executedAt || order.executed_at) && (
+                        <div className="text-[10px] text-green-700 mt-0.5">
+                          Exec: {new Date(order.executedAt || order.executed_at).toLocaleString('en-IN')}
+                        </div>
+                      )}
                     </td>
-                    <td className="p-4 font-medium">{order.symbol}</td>
+                    <td className="p-4 font-medium">
+                      {order.symbol}
+                      {order.name && order.name !== order.symbol && (
+                        <div className="text-[10px] text-groww-muted font-normal">{order.name}</div>
+                      )}
+                    </td>
                     <td
                       className={`p-4 font-medium ${
                         order.order_type === 'BUY' ? 'text-green-600' : 'text-red-600'
@@ -222,32 +305,40 @@ export default function OrdersPage() {
                       {order.order_type}
                     </td>
                     <td className="p-4 capitalize">{order.order_mode}</td>
-                    <td className="p-4 text-right">
-                      {(() => {
-                        const lotSize = prices[order.symbol]?.lotSize || 1;
-                        const numLots = order.qty / lotSize;
-                        return (
-                          <>
-                            <div className="font-medium text-groww-ink">{numLots % 1 === 0 ? numLots : numLots.toFixed(2)} Lots</div>
-                            <div className="text-[10px] text-groww-muted">{order.qty} shares</div>
-                            <div className={`text-[9px] mt-1 font-semibold ${numLots % 1 === 0 ? 'text-green-600' : 'text-red-500'}`}>
-                               {numLots % 1 === 0 ? '✓ LOT VALID' : '⚠ INVALID SIZE'}
-                            </div>
-                          </>
-                        );
-                      })()}
+                    <td className="p-4">
+                      <span className="text-xs font-medium text-groww-ink">{order.product_type || 'CNC'}</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {orderTags(order).map((t) => (
+                          <span key={t.label} className={`text-[9px] px-1.5 py-0.5 rounded font-semibold ${t.className}`}>
+                            {t.label}
+                          </span>
+                        ))}
+                        {order.validity && order.validity !== 'DAY' && !orderTags(order).find((x) => x.label === order.validity) && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 font-semibold">
+                            {order.validity}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="p-4 text-right">
-                      {(() => {
-                        const price = order.executed_price || order.price || 0;
-                        const lotSize = prices[order.symbol]?.lotSize || 1;
-                        return (
-                          <>
-                            <div className="font-medium text-groww-ink">₹{(price * lotSize).toLocaleString()}</div>
-                            <div className="text-[10px] text-groww-muted">@ ₹{price} / share</div>
-                          </>
-                        );
-                      })()}
+                      <div className="font-medium text-groww-ink">
+                        {order.lots != null ? (order.lotsWhole ? order.lots : order.lots.toFixed(2)) : order.qty} Lots
+                      </div>
+                      <div className="text-[10px] text-groww-muted">{order.qty} shares · lot {order.lotSize || 1}</div>
+                      <div className={`text-[9px] mt-1 font-semibold ${order.lotValid !== false ? 'text-green-600' : 'text-red-500'}`}>
+                        {order.lotValid !== false ? '✓ LOT VALID' : '⚠ INVALID SIZE'}
+                      </div>
+                    </td>
+                    <td className="p-4 text-right">
+                      <div className="font-medium text-groww-ink">
+                        ₹{(order.perLotValue ?? 0).toLocaleString('en-IN')}
+                      </div>
+                      <div className="text-[10px] text-groww-muted">
+                        @ ₹{order.displayPrice ?? order.executedPrice ?? order.executed_price ?? order.price ?? 0} / share
+                      </div>
+                      {order.totalValue > 0 && (
+                        <div className="text-[10px] text-groww-muted">Total ₹{order.totalValue.toLocaleString('en-IN')}</div>
+                      )}
                     </td>
                     <td className="p-4">
                       <div>
@@ -255,14 +346,21 @@ export default function OrdersPage() {
                           {order.status}
                         </span>
                       </div>
-                      {order.status === 'rejected' && (
+                      {(order.status === 'rejected' || order.status === 'cancelled') && order.reject_reason && (
                          <div className="text-[10px] text-red-600 mt-2 font-medium max-w-[150px] leading-tight">
-                            Reject: {order.reject_reason || 'Insufficient funds or margin'}
+                            {order.reject_reason}
                          </div>
                       )}
                     </td>
                     <td className="p-4 text-right">
                       <div className="flex flex-wrap gap-2 justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setDetailOrder(order)}
+                          className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 text-xs font-medium border border-gray-200 px-2 py-1 rounded"
+                        >
+                          Details
+                        </button>
                         {order.status === 'pending' && (
                           <button
                             type="button"
@@ -285,7 +383,10 @@ export default function OrdersPage() {
                         )}
                         <button
                           type="button"
-                          onClick={() => window.location.href = '/dashboard/trade'}
+                          onClick={() => {
+                            const pt = order.productType || order.product_type || 'CNC';
+                            window.location.href = `/dashboard/trade?symbol=${order.symbol}&exchange=${order.exchange || 'NSE'}&side=${order.order_type}&product=${pt}`;
+                          }}
                           className="inline-flex items-center gap-1 text-gray-600 hover:text-gray-900 text-xs font-medium border border-gray-300 px-2 py-1 rounded"
                         >
                           Re-order
@@ -320,6 +421,21 @@ export default function OrdersPage() {
             </div>
             <p className="text-sm text-groww-muted mb-4">Only pending orders can be modified.</p>
             <div className="space-y-3">
+              {(modifying.lotSize || 1) > 1 && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Lots (× {modifying.lotSize} shares)
+                  </label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm"
+                    value={modifyLots}
+                    onChange={(e) => onModifyLotsChange(e.target.value)}
+                  />
+                </div>
+              )}
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Quantity (shares)</label>
                 <input
@@ -375,6 +491,59 @@ export default function OrdersPage() {
                 {modifySaving ? 'Saving…' : 'Save changes'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {detailOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h3 className="text-lg font-bold text-groww-ink">{detailOrder.symbol}</h3>
+                <p className="text-sm text-groww-muted">{detailOrder.name || detailOrder.symbol}</p>
+              </div>
+              <button type="button" onClick={() => setDetailOrder(null)} className="text-gray-400 hover:text-gray-700 p-1">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              {[
+                ['Order ID', detailOrder.orderId || detailOrder.id],
+                ['Status', detailOrder.status],
+                ['Side', detailOrder.order_type],
+                ['Mode', detailOrder.order_mode],
+                ['Product', detailOrder.productType || detailOrder.product_type],
+                ['Exchange', detailOrder.exchange || 'NSE'],
+                ['Lots', detailOrder.lotsLabel || `${detailOrder.lots} × ${detailOrder.lotSize}`],
+                ['Qty', detailOrder.qty],
+                ['Lot size', detailOrder.lotSize],
+                ['Lot check', detailOrder.lotValidationMessage],
+                ['Price', detailOrder.price != null ? `₹${detailOrder.price}` : '—'],
+                ['Executed', detailOrder.executedPrice != null ? `₹${detailOrder.executedPrice}` : '—'],
+                ['Per lot', detailOrder.perLotValue != null ? `₹${detailOrder.perLotValue}` : '—'],
+                ['Total', detailOrder.totalValue != null ? `₹${detailOrder.totalValue}` : '—'],
+                ['Validity', detailOrder.validity],
+                ['AMO', detailOrder.is_amo ? 'Yes' : 'No'],
+                ['Placed', detailOrder.createdAt || detailOrder.created_at],
+                ['Executed at', detailOrder.executedAt || detailOrder.executed_at || '—']
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-xs text-groww-muted">{k}</dt>
+                  <dd className="font-medium text-groww-ink break-all">{String(v ?? '—')}</dd>
+                </div>
+              ))}
+            </dl>
+            {detailOrder.reject_reason && (
+              <p className="mt-4 text-sm text-red-600 bg-red-50 p-3 rounded-lg">{detailOrder.reject_reason}</p>
+            )}
+            <button
+              type="button"
+              onClick={() => setDetailOrder(null)}
+              className="mt-6 w-full py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-gray-50"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}

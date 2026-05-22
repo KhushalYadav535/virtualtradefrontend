@@ -1,28 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { portfolio, market, leaderboard, trading, activity } from '../../lib/api';
-import { useAuthStore, usePortfolioStore } from '../../lib/store';
+import { portfolio, market, leaderboard as leaderboardApi, trading, activity } from '../../lib/api';
+import { useAuthStore, usePortfolioStore, useMarketStore } from '../../lib/store';
+import { initSocket } from '../../lib/socket';
 import { isStaffRole } from '../../lib/roles';
 import MarketCountdown from '../../components/MarketCountdown';
 import {
   TrendingUp, TrendingDown, Wallet, BarChart3, ArrowUp, ArrowDown, Clock,
-  ShoppingCart, ListOrdered, Star, Activity, Layers, ChevronRight
+  ListOrdered, Star, Activity, Layers, ChevronRight
 } from 'lucide-react';
 
 const quickActions = [
-  { href: '/dashboard/trade', label: 'Stocks', icon: ShoppingCart, tint: 'bg-groww-primary-light text-groww-primary' },
-  { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered, tint: 'bg-amber-50 text-amber-600' },
-  { href: '/dashboard/positions', label: 'Positions', icon: Layers, tint: 'bg-violet-50 text-violet-600' },
+  { href: '/dashboard/trade?side=BUY', label: 'Buy', icon: TrendingUp, tint: 'bg-emerald-50 text-emerald-600' },
+  { href: '/dashboard/trade?side=SELL', label: 'Sell', icon: TrendingDown, tint: 'bg-red-50 text-red-600' },
   { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star, tint: 'bg-sky-50 text-sky-600' },
+  { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered, tint: 'bg-amber-50 text-amber-600' },
 ];
 
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [indices, setIndices] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
+  const [topLeaderboard, setTopLeaderboard] = useState([]);
   const [marketStatus, setMarketStatus] = useState(null);
   const [recentOrders, setRecentOrders] = useState([]);
   const [activityFeed, setActivityFeed] = useState([]);
@@ -37,12 +38,39 @@ export default function DashboardPage() {
     }
   }, [authReady, user?.role, router]);
 
+  const { setIndices: setStoreIndices } = useMarketStore();
+
+  const refreshIndices = useCallback(async () => {
+    try {
+      const { data } = await market.getIndices();
+      setIndices(data || []);
+      setStoreIndices(data || []);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [setStoreIndices]);
+
   useEffect(() => {
     if (!authReady || isStaffRole(user?.role)) return;
     loadData();
     const marketInterval = setInterval(loadMarketStatus, 60000);
-    return () => clearInterval(marketInterval);
-  }, []);
+    const indicesInterval = setInterval(refreshIndices, 60000);
+
+    const socket = initSocket();
+    const onIndex = (data) => {
+      if (Array.isArray(data?.indices) && data.indices.length) {
+        setIndices(data.indices);
+        setStoreIndices(data.indices);
+      }
+    };
+    socket?.on('indexUpdate', onIndex);
+
+    return () => {
+      clearInterval(marketInterval);
+      clearInterval(indicesInterval);
+      socket?.off('indexUpdate', onIndex);
+    };
+  }, [authReady, user?.role, refreshIndices, setStoreIndices]);
 
   const loadMarketStatus = async () => {
     try {
@@ -58,13 +86,13 @@ export default function DashboardPage() {
       const [summaryRes, indicesRes, leaderboardRes, ordersRes, activityRes] = await Promise.all([
         portfolio.getSummary(),
         market.getIndices(),
-        leaderboard.get({ limit: 5 }),
+        leaderboardApi.get({ limit: 5 }),
         trading.getOrders(5).catch(() => ({ data: [] })),
         activity.getFeed(12).catch(() => ({ data: [] }))
       ]);
       setSummary(summaryRes.data);
       setIndices(indicesRes.data);
-      setLeaderboard(leaderboardRes.data.slice(0, 5));
+      setTopLeaderboard(leaderboardRes.data.slice(0, 5));
       setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
       setActivityFeed(Array.isArray(activityRes?.data) ? activityRes.data : []);
       await loadMarketStatus();
@@ -86,9 +114,16 @@ export default function DashboardPage() {
   const totalValue = summary?.totalValue ?? 0;
   const returns = summary?.totalReturns ?? 0;
   const returnsPct = summary?.totalReturnsPercent ?? 0;
-  const dayPnL = summary?.dayPnL ?? 0;
+  const dayPnL = summary?.dayReturns ?? summary?.dayPnL ?? 0;
+  const dayPnLPct = summary?.dayReturnsPercent ?? 0;
 
   const investedValue = summary?.investedValue ?? Math.max(0, (summary?.holdingsValue || 0) - (summary?.totalReturns || 0));
+
+  const marketLabel = marketStatus?.preOpen
+    ? 'Pre-open'
+    : marketStatus?.isOpen
+      ? 'Market open'
+      : 'Market closed';
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
@@ -109,13 +144,13 @@ export default function DashboardPage() {
             <p className="text-white/70">Today&apos;s P&L</p>
             <p className={`font-semibold ${dayPnL >= 0 ? 'text-white' : 'text-red-100'}`}>
               {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN')}
+              {' '}
+              <span className="text-white/90">({dayPnLPct >= 0 ? '+' : ''}{dayPnLPct.toFixed(2)}%)</span>
             </p>
           </div>
           <div className="ml-auto flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur-sm">
             <Clock className="h-3.5 w-3.5" />
-            <span className="text-xs font-medium">
-              {marketStatus?.isOpen ? 'Market open' : 'Market closed'}
-            </span>
+            <span className="text-xs font-medium">{marketLabel}</span>
             {marketStatus && (
               <MarketCountdown
                 isOpen={marketStatus.isOpen}
@@ -153,16 +188,23 @@ export default function DashboardPage() {
                 ₹{idx.ltp?.toLocaleString('en-IN')}
               </p>
               <div
-                className={`mt-1 flex items-center gap-0.5 text-sm font-semibold ${
+                className={`mt-1 flex flex-col items-end text-sm font-semibold ${
                   idx.changePercent >= 0 ? 'text-profit' : 'text-loss'
                 }`}
               >
-                {idx.changePercent >= 0 ? (
-                  <ArrowUp className="h-3.5 w-3.5" />
-                ) : (
-                  <ArrowDown className="h-3.5 w-3.5" />
-                )}
-                {idx.changePercent?.toFixed(2)}%
+                <span className="inline-flex items-center gap-0.5">
+                  {idx.changePercent >= 0 ? (
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ArrowDown className="h-3.5 w-3.5" />
+                  )}
+                  {idx.change != null
+                    ? `${idx.change >= 0 ? '+' : ''}₹${Math.abs(idx.change).toFixed(2)}`
+                    : '—'}
+                </span>
+                <span className="text-xs opacity-90">
+                  {idx.changePercent != null ? `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%` : ''}
+                </span>
               </div>
             </div>
           ))}
@@ -295,7 +337,7 @@ export default function DashboardPage() {
             </button>
           </div>
           <div className="space-y-2">
-            {leaderboard.map((u, i) => (
+            {topLeaderboard.map((u, i) => (
               <div key={i} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5">
                 <div className="flex items-center gap-2.5">
                   <span

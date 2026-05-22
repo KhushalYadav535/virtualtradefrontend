@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import axios from 'axios';
+import { getDeviceFingerprint } from '../lib/secureStorage';
 import { auth } from '../lib/api';
 import { persistLoginSession } from '../lib/authSession';
 import { TrendingUp, Shield, BarChart3, ArrowRight, DollarSign, Eye, EyeOff, Sparkles } from 'lucide-react';
@@ -88,7 +89,10 @@ function HomeContent() {
     }
     try {
       const url = isLogin ? '/auth/login' : '/auth/register';
-      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}${url}`, form);
+      const payload = isLogin
+        ? { ...form, deviceFingerprint: getDeviceFingerprint(), deviceLabel: 'Web browser' }
+        : form;
+      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}${url}`, payload);
       if (finishAuth(data)) return;
     } catch (err) {
       const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
@@ -173,6 +177,9 @@ function HomeContent() {
         <footer className="space-y-3 border-t border-groww-border py-10 text-center text-sm text-groww-muted">
           <p>This is a paper trading simulation for educational purposes only. No real money is involved.</p>
           <p className="flex flex-wrap justify-center gap-4">
+            <a href="/legal" className="groww-link">
+              Legal
+            </a>
             <a href="/legal/terms" className="groww-link">
               Terms
             </a>

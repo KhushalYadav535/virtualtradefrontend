@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
 import { AlertCircle, Loader2, RefreshCw } from 'lucide-react';
 import { market, trading } from '../../../lib/api';
 
@@ -79,7 +80,12 @@ export default function OptionsChainPage() {
       <div className="flex flex-wrap justify-between items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Options Chain</h1>
-          <p className="text-sm text-gray-500">Live data from NSE India</p>
+          <p className="text-sm text-gray-500">
+            Live data from NSE India ·{' '}
+            <Link href="/dashboard/options/strategies" className="text-groww-primary font-medium hover:underline">
+              Strategy calculator
+            </Link>
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex space-x-2 bg-white rounded-lg p-1 shadow-sm border">

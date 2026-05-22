@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { useAuthStore, usePortfolioStore } from '../../lib/store';
+import { useAuthStore, usePortfolioStore, useMarketStore, usePortfolioMgmtStore } from '../../lib/store';
 import { getDefaultDashboardPath, isStaffOnlyPath, isStaffRole } from '../../lib/roles';
 import {
   LayoutDashboard, TrendingUp, BarChart3, Star, Trophy, Settings,
   LogOut, Menu, X, Wallet, Activity, Clock, Briefcase,
-  LineChart, ListOrdered, TrendingDown, Bell, BellRing, ChevronRight
+  LineChart, ListOrdered, TrendingDown, Bell, BellRing, ChevronRight, WifiOff, FolderKanban
 } from 'lucide-react';
 import { initSocket, disconnectSocket } from '../../lib/socket';
 import { clearAuthSession } from '../../lib/authSession';
-import { market, auth, portfolio, notifications as notificationsApi } from '../../lib/api';
+import { market, auth, portfolio, notifications as notificationsApi, system, offline as offlineApi, portfoliosMgmt } from '../../lib/api';
+import ConnectionStatusBar from '../../components/ConnectionStatusBar';
+import { useConnectionStore } from '../../lib/connectionStore';
+import { hydrateMarketFromCache, saveOfflineSnapshot } from '../../lib/offlineCache';
+import { mergeTradingPrefs } from '../../lib/tradingPrefs';
+import { navLabel, getLocaleFromUser } from '../../lib/i18n';
 
 const navSections = [
   {
@@ -27,12 +32,17 @@ const navSections = [
     items: [
       { href: '/dashboard/trade', label: 'Stocks', icon: TrendingUp },
       { href: '/dashboard/options', label: 'F&O', icon: BarChart3 },
+      { href: '/dashboard/futures', label: 'Futures', icon: TrendingUp },
+      { href: '/dashboard/baskets', label: 'Baskets', icon: Briefcase },
+      { href: '/dashboard/screener', label: 'Screener', icon: Activity },
       { href: '/dashboard/orders', label: 'Orders', icon: ListOrdered },
       { href: '/dashboard/tradebook', label: 'Trade Book', icon: Briefcase },
       { href: '/dashboard/positions', label: 'Positions', icon: Activity },
       { href: '/dashboard/charts', label: 'Charts', icon: BarChart3 },
       { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star },
       { href: '/dashboard/alerts', label: 'Alerts', icon: BellRing },
+      { href: '/dashboard/queued', label: 'Queued', icon: WifiOff },
+      { href: '/dashboard/portfolios', label: 'Portfolios', icon: FolderKanban },
     ],
   },
   {
@@ -124,6 +134,15 @@ export default function DashboardLayout({ children }) {
   }, [authReady, authChecked, user?.role, pathname, router]);
 
   useEffect(() => {
+    if (!authReady || !authChecked || !localStorage.getItem('token')) return;
+    portfoliosMgmt.list().then(({ data }) => {
+      const p = usePortfolioMgmtStore.getState();
+      p.setPortfolios(data.portfolios || []);
+      if (data.activeId) p.setActivePortfolioId(data.activeId);
+    }).catch(() => {});
+  }, [authReady, authChecked]);
+
+  useEffect(() => {
     if (!authReady || !authChecked) return;
     if (!localStorage.getItem('token')) {
       router.replace('/?session=expired');
@@ -135,8 +154,53 @@ export default function DashboardLayout({ children }) {
         .then(({ data }) => setUnreadNotifications(data.count || 0))
         .catch(() => {});
     }
+    hydrateMarketFromCache();
     initSocket();
+    const prefs = mergeTradingPrefs(
+      user?.tradingPrefs || JSON.parse(localStorage.getItem('tradingPrefs') || 'null')
+    );
+    localStorage.setItem('tradingPrefs', JSON.stringify(prefs));
+    useConnectionStore.getState().setLowDataMode(prefs.lowDataMode);
   }, [pathname, authReady, authChecked, user?.role, router]);
+
+  useEffect(() => {
+    const onOnline = () => {
+      useConnectionStore.getState().setOnline(true);
+      initSocket();
+      offlineApi.sync().catch(() => {});
+    };
+    const onOffline = () => {
+      useConnectionStore.getState().setOnline(false);
+      hydrateMarketFromCache();
+    };
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+    useConnectionStore.getState().setOnline(navigator.onLine);
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !localStorage.getItem('token')) return undefined;
+    const syncSnapshot = () => {
+      system
+        .getCacheSnapshot()
+        .then(({ data }) => {
+          saveOfflineSnapshot(data);
+          useConnectionStore.getState().setApiReachable(true);
+          useConnectionStore.getState().setLastSync(data.cachedAt);
+          if (!navigator.onLine) return;
+          if (data.indices?.length) useMarketStore.getState().setIndices(data.indices);
+          if (data.quotes?.length) useMarketStore.getState().updatePrices(data.quotes);
+        })
+        .catch(() => useConnectionStore.getState().setApiReachable(false));
+    };
+    syncSnapshot();
+    const id = setInterval(syncSnapshot, 120000);
+    return () => clearInterval(id);
+  }, [authReady]);
 
   useEffect(() => {
     if ('serviceWorker' in navigator) {
@@ -194,6 +258,7 @@ export default function DashboardLayout({ children }) {
   const isStaff = isStaffRole(user?.role);
   const homePath = getDefaultDashboardPath(user?.role);
   const visibleNavSections = isStaff ? staffNavSections : navSections;
+  const locale = getLocaleFromUser(user);
 
   const navigateTo = (href) => (e) => {
     e.preventDefault();
@@ -223,7 +288,7 @@ export default function DashboardLayout({ children }) {
             isActive ? 'text-groww-primary' : 'text-groww-muted group-hover:text-groww-ink'
           }`}
         />
-        <span className="truncate">{item.label}</span>
+        <span className="truncate">{navLabel(item.label, locale)}</span>
         {isActive && <ChevronRight className="ml-auto h-4 w-4 opacity-50" />}
       </a>
     );
@@ -336,6 +401,7 @@ export default function DashboardLayout({ children }) {
       )}
 
       <main className="flex min-w-0 flex-1 flex-col md:ml-[248px]">
+        <ConnectionStatusBar />
         <header className="sticky top-0 z-30 flex shrink-0 items-center gap-4 border-b border-groww-border bg-groww-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
           <button
             type="button"
@@ -390,9 +456,15 @@ export default function DashboardLayout({ children }) {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
           {children}
-          <p className="mt-10 border-t border-groww-border pt-5 text-center text-[11px] leading-relaxed text-groww-muted">
-            Paper trading simulation for education only. No real money is involved.
-          </p>
+          <footer className="mt-10 border-t border-groww-border pt-5 text-center text-[11px] leading-relaxed text-groww-muted">
+            <p>Paper trading simulation for education only. No real money is involved.</p>
+            <p className="mt-2 flex flex-wrap justify-center gap-x-3 gap-y-1">
+              <a href="/legal" className="text-groww-primary hover:underline">Legal</a>
+              <a href="/legal/terms" className="hover:text-groww-ink">Terms</a>
+              <a href="/legal/privacy" className="hover:text-groww-ink">Privacy</a>
+              <a href="/legal/disclaimer" className="hover:text-groww-ink">Disclaimer</a>
+            </p>
+          </footer>
         </div>
       </main>
     </div>

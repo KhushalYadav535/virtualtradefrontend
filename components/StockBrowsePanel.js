@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Loader2, Info } from 'lucide-react';
 import { market } from '../lib/api';
+import { buildSearchOpts } from '../lib/searchUtils';
 
 const PAGE_SIZE = 80;
 const ROW_HEIGHT = 48;
@@ -14,6 +15,7 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
   const [exchangeFilter, setExchangeFilter] = useState('ALL');
   const [sectorFilter, setSectorFilter] = useState('');
   const [lotFilter, setLotFilter] = useState('');
+  const [marketCapFilter, setMarketCapFilter] = useState('');
   const [sectors, setSectors] = useState([]);
   const [recentSearches, setRecentSearches] = useState([]);
   const [popular, setPopular] = useState([]);
@@ -36,10 +38,11 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
     else setLoadingMore(true);
 
     try {
-      const { data } = await market.search(searchQuery, exchangeFilter, PAGE_SIZE, offset, {
+      const { data } = await market.search(searchQuery, exchangeFilter, PAGE_SIZE, offset, buildSearchOpts(searchQuery, {
         sector: sectorFilter || undefined,
-        lotFilter: lotFilter || undefined
-      });
+        lotFilter: lotFilter || undefined,
+        marketCap: marketCapFilter || undefined
+      }));
       const items = data.items || data;
       const nextTotal = data.total ?? items.length;
 
@@ -61,7 +64,7 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
       setLoadingMore(false);
       loadingRef.current = false;
     }
-  }, [searchQuery, exchangeFilter, sectorFilter, lotFilter]);
+  }, [searchQuery, exchangeFilter, sectorFilter, lotFilter, marketCapFilter]);
 
   useEffect(() => {
     market.getSectors().then(({ data }) => setSectors(data || [])).catch(() => {});
@@ -117,6 +120,16 @@ export default function StockBrowsePanel({ onSelect, selectedSymbol, selectedExc
             ))}
           </select>
         )}
+        <select
+          value={marketCapFilter}
+          onChange={(e) => setMarketCapFilter(e.target.value)}
+          className="groww-input py-2 text-sm"
+        >
+          <option value="">All market caps</option>
+          <option value="Large">Large cap</option>
+          <option value="Mid">Mid cap</option>
+          <option value="Small">Small cap</option>
+        </select>
         <select
           value={lotFilter}
           onChange={(e) => setLotFilter(e.target.value)}

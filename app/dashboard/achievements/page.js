@@ -1,15 +1,25 @@
 "use client";
 
 import { useEffect, useState } from 'react';
-import { Award, Lock, Star, TrendingUp, PieChart, Activity, Loader2 } from 'lucide-react';
+import { Award, Lock, Star, TrendingUp, PieChart, Activity, Loader2, Flame, Calendar, LayoutGrid, Box, BarChart3, Trophy, Settings2, Users, Layers } from 'lucide-react';
 import { achievements as achievementsApi } from '../../../lib/api';
 
 const iconMap = {
   rocket: <Activity className="w-8 h-8" />,
   'trending-up': <TrendingUp className="w-8 h-8" />,
-  layers: <Award className="w-8 h-8" />,
+  layers: <Layers className="w-8 h-8" />,
   'pie-chart': <PieChart className="w-8 h-8" />,
-  diamond: <Star className="w-8 h-8" />
+  diamond: <Star className="w-8 h-8" />,
+  flame: <Flame className="w-8 h-8" />,
+  calendar: <Calendar className="w-8 h-8" />,
+  grid: <LayoutGrid className="w-8 h-8" />,
+  cube: <Box className="w-8 h-8" />,
+  ribbon: <Award className="w-8 h-8" />,
+  'stats-chart': <BarChart3 className="w-8 h-8" />,
+  trophy: <Trophy className="w-8 h-8" />,
+  options: <Settings2 className="w-8 h-8" />,
+  people: <Users className="w-8 h-8" />,
+  pulse: <Activity className="w-8 h-8" />
 };
 
 export default function GamificationPage() {
@@ -18,21 +28,17 @@ export default function GamificationPage() {
 
   useEffect(() => {
     achievementsApi.get()
-      .then((res) => {
-         const d = res.data;
-         d.dailyChallenges = d.dailyChallenges || [
-            { id: 'd1', title: 'First Trade of the Day', reward: 50, progress: 1, target: 1, completed: true },
-            { id: 'd2', title: 'Trade 5 Lots in Options', reward: 100, progress: 2, target: 5, completed: false }
-         ];
-         d.weeklyChallenges = d.weeklyChallenges || [
-            { id: 'w1', title: 'Maintain 5-Day Streak', reward: 500, progress: 3, target: 5, completed: false },
-            { id: 'w2', title: 'Earn ₹10,000 Virtual Profit', reward: 1000, progress: 4500, target: 10000, completed: false }
-         ];
-         setData(d);
-      })
+      .then((res) => setData(res.data))
       .catch(console.error)
       .finally(() => setLoading(false));
   }, []);
+
+  const copyReferral = () => {
+    const code = data?.referral?.code;
+    const msg = data?.referral?.shareMessage || (code ? `Use my VirtualTrade code: ${code}` : '');
+    if (!msg) return;
+    navigator.clipboard?.writeText(msg).catch(() => {});
+  };
 
   if (loading) {
     return (
@@ -42,7 +48,8 @@ export default function GamificationPage() {
     );
   }
 
-  const { achievements = [], stats = {}, dailyChallenges = [], weeklyChallenges = [] } = data || {};
+  const { achievements = [], stats = {}, dailyChallenges = [], weeklyChallenges = [], referral } = data || {};
+  const progressPct = stats.progressPercent ?? Math.round(((stats.progressToNextLevel || 0) / 100) * 100);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -52,12 +59,13 @@ export default function GamificationPage() {
       <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl p-8 text-white shadow-lg">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <p className="text-indigo-100 font-medium">Current Level</p>
+            <p className="text-indigo-100 font-medium">Current Level · {stats.skillTier || 'Beginner'}</p>
             <h2 className="text-5xl font-extrabold">{stats.level || 1}</h2>
           </div>
-          <div className="bg-white/20 p-4 rounded-xl backdrop-blur-sm">
+          <div className="bg-white/20 p-4 rounded-xl backdrop-blur-sm text-right">
             <p className="text-indigo-100 text-sm">Total Points</p>
             <p className="text-2xl font-bold">{stats.totalPoints || 0}</p>
+            <p className="text-indigo-200 text-xs mt-1">{stats.unlockedCount || 0}/{stats.totalAchievements || 0} badges</p>
           </div>
         </div>
 
@@ -69,7 +77,7 @@ export default function GamificationPage() {
           <div className="w-full bg-black/20 rounded-full h-3 overflow-hidden">
             <div 
               className="bg-white h-full rounded-full transition-all duration-1000" 
-              style={{ width: `${stats.progressToNextLevel || 0}%` }}
+              style={{ width: `${progressPct}%` }}
             ></div>
           </div>
         </div>
@@ -116,9 +124,13 @@ export default function GamificationPage() {
                   <Star className="w-6 h-6" />
                </div>
                <h2 className="text-xl font-bold text-groww-ink mb-2">Refer a Friend</h2>
-               <p className="text-gray-600 mb-6">Invite friends to paper trade on VirtualTrade and earn <span className="font-bold text-groww-primary">500 bonus points</span> for each successful referral!</p>
-               <button className="w-full bg-groww-primary text-white font-bold py-3 rounded-xl hover:bg-groww-primary-dark transition">
-                  Invite Now
+               <p className="text-gray-600 mb-4">Invite friends to paper trade on VirtualTrade and earn <span className="font-bold text-groww-primary">{referral?.pointsPerReferral || 500} bonus points</span> per signup.</p>
+               {referral?.code && (
+                 <p className="font-mono text-lg font-bold text-groww-primary mb-4 tracking-wider">{referral.code}</p>
+               )}
+               <p className="text-sm text-gray-500 mb-4">{referral?.referrals || 0} successful referrals</p>
+               <button type="button" onClick={copyReferral} className="w-full bg-groww-primary text-white font-bold py-3 rounded-xl hover:bg-groww-primary-dark transition">
+                  Copy invite link
                </button>
             </div>
          </div>

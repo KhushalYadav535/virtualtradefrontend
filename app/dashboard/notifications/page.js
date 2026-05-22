@@ -1,32 +1,35 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, Bell, CheckCheck } from 'lucide-react';
+import { Loader2, Bell, CheckCheck, Trash2 } from 'lucide-react';
 import { notifications as notificationsApi } from '../../../lib/api';
 import { useRouter } from 'next/navigation';
+
+const TABS = [
+  { id: 'All', types: null },
+  { id: 'Orders', types: ['order'] },
+  { id: 'Margin', types: ['margin'] },
+  { id: 'Alerts', types: ['price_alert', 'alert', 'corporate_action', 'holding', 'lot_change'] },
+  { id: 'Funds', types: ['fund'] },
+  { id: 'Market', types: ['market'] }
+];
 
 export default function NotificationsPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('All');
   const [items, setItems] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Define mock smart alerts
-  const mockAlerts = [
-    { id: 'mock-1', title: 'Auto Square-off Warning', body: 'Your MIS positions will be auto-squared off at 3:20 PM. Please close them manually to avoid auto-square-off charges.', type: 'margin', is_read: false, created_at: new Date(Date.now() - 1000 * 60 * 5).toISOString(), icon: 'AlertTriangle' },
-    { id: 'mock-2', title: 'Low Margin Alert', body: 'Your margin utilization has crossed 80%. Please add funds to avoid position rejection.', type: 'margin', is_read: false, created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(), icon: 'Wallet' },
-    { id: 'mock-3', title: 'Volume Spike Alert', body: 'Unusual volume detected in HDFCBANK (3x average). Consider reviewing your watchlist.', type: 'alert', is_read: true, created_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), icon: 'Activity' },
-    { id: 'mock-4', title: 'Lot Value Alert', body: 'NIFTY BANK lot value has exceeded your specified threshold of ₹15,000 per lot.', type: 'alert', is_read: true, created_at: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(), icon: 'Zap' }
-  ];
-
   const load = useCallback(async () => {
     try {
-      const { data } = await notificationsApi.getAll({ limit: 80 });
-      let fetched = Array.isArray(data) ? data : [];
-      // Prepend mock alerts for demonstration
-      fetched = [...mockAlerts, ...fetched];
-      setItems(fetched);
+      const [listRes, countRes] = await Promise.all([
+        notificationsApi.getAll({ limit: 100 }),
+        notificationsApi.getUnreadCount()
+      ]);
+      setItems(Array.isArray(listRes.data) ? listRes.data : []);
+      setUnreadCount(countRes.data?.count ?? 0);
       setError('');
     } catch (e) {
       setError(e.response?.data?.error || 'Failed to load notifications');
@@ -39,10 +42,17 @@ export default function NotificationsPage() {
     load();
   }, [load]);
 
+  const tabConfig = TABS.find((t) => t.id === activeTab) || TABS[0];
+  const filtered = items.filter((n) => {
+    if (!tabConfig.types) return true;
+    return tabConfig.types.includes(n.type);
+  });
+
   const markRead = async (id) => {
     try {
       await notificationsApi.markRead(id);
       setItems((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
+      setUnreadCount((c) => Math.max(0, c - 1));
     } catch {
       /* ignore */
     }
@@ -52,15 +62,31 @@ export default function NotificationsPage() {
     try {
       await notificationsApi.markAllRead();
       setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      setUnreadCount(0);
     } catch {
       setError('Could not mark all as read');
+    }
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm('Clear all notifications?')) return;
+    try {
+      await notificationsApi.clearAll();
+      setItems([]);
+      setUnreadCount(0);
+    } catch {
+      setError('Could not clear notifications');
     }
   };
 
   const handleClick = async (n) => {
     if (!n.is_read) await markRead(n.id);
     if (n.type === 'price_alert') router.push('/dashboard/alerts');
-    if (n.type === 'achievement') router.push('/dashboard/achievements');
+    else if (n.type === 'order') router.push('/dashboard/orders');
+    else if (n.type === 'margin' || n.type === 'fund') router.push('/dashboard/wallet');
+    else if (n.type === 'market') router.push('/dashboard/market');
+    else if (n.type === 'achievement') router.push('/dashboard/achievements');
+    else if (n.type === 'corporate_action' || n.type === 'holding') router.push('/dashboard/portfolio');
   };
 
   if (loading) {
@@ -71,49 +97,67 @@ export default function NotificationsPage() {
     );
   }
 
-  const unread = items.filter((n) => !n.is_read).length;
-
   return (
     <div className="space-y-6 max-w-2xl">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Notifications</h1>
-          <p className="text-gray-500">Price alerts, achievements, and updates</p>
+          <p className="text-gray-500">
+            Orders, margin, price alerts &amp; market — {unreadCount} unread
+          </p>
         </div>
-        {unread > 0 && (
-          <button
-            type="button"
-            onClick={markAllRead}
-            className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-          >
-            <CheckCheck className="h-4 w-4" />
-            Mark all read
-          </button>
-        )}
+        <div className="flex gap-2">
+          {unreadCount > 0 && (
+            <button
+              type="button"
+              onClick={markAllRead}
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <CheckCheck className="h-4 w-4" />
+              Mark all read
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              type="button"
+              onClick={clearAll}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-200 px-3 py-2 text-sm text-red-600 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" />
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex gap-2 border-b border-gray-100 pb-2">
-        {['All', 'Orders', 'Margin', 'Alerts'].map(tab => (
-           <button 
-             key={tab} 
-             onClick={() => setActiveTab(tab)} 
-             className={`px-4 py-2 text-sm font-medium rounded-lg transition ${activeTab === tab ? 'bg-groww-primary text-white' : 'text-gray-600 hover:bg-gray-50'}`}
-           >
-             {tab}
-           </button>
+      <div className="flex flex-wrap gap-2 border-b border-gray-100 pb-2">
+        {TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-3 py-1.5 text-sm font-medium rounded-lg transition ${
+              activeTab === tab.id ? 'bg-groww-primary text-white' : 'text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            {tab.id}
+          </button>
         ))}
       </div>
 
       {error && <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</div>}
 
-      {items.filter(n => activeTab === 'All' || (n.type && n.type.toLowerCase().includes(activeTab.toLowerCase())) || (activeTab === 'Orders' && (!n.type || n.type === 'order'))).length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
           <Bell className="mx-auto h-10 w-10 text-gray-300" />
           <p className="mt-3 text-gray-500">No {activeTab.toLowerCase()} notifications yet</p>
+          <p className="text-xs text-gray-400 mt-2">
+            Trade, set price alerts, or add funds to receive updates here.
+          </p>
         </div>
       ) : (
         <ul className="divide-y divide-gray-100 rounded-xl border border-gray-200 bg-white overflow-hidden">
-          {items.filter(n => activeTab === 'All' || (n.type && n.type.toLowerCase().includes(activeTab.toLowerCase())) || (activeTab === 'Orders' && (!n.type || n.type === 'order'))).map((n) => (
+          {filtered.map((n) => (
             <li key={n.id}>
               <button
                 type="button"
@@ -123,12 +167,32 @@ export default function NotificationsPage() {
                 }`}
               >
                 <div className="flex items-start gap-3">
-                  {!n.is_read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-groww-primary" />}
-                  <div className={!n.is_read ? '' : 'ml-5'}>
-                    <p className={`font-medium ${n.type==='margin' ? 'text-red-600' : 'text-gray-800'}`}>{n.title}</p>
-                    {n.body && <p className="text-sm text-gray-600 mt-1 leading-relaxed">{n.body}</p>}
-                    <p className="text-xs text-gray-400 mt-2 font-medium uppercase tracking-wider">
-                      {new Date(n.created_at).toLocaleString('en-IN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  {!n.is_read && (
+                    <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-groww-primary" />
+                  )}
+                  <div className={!n.is_read ? '' : 'ml-5 flex-1'}>
+                    <div className="flex justify-between gap-2">
+                      <p
+                        className={`font-medium ${
+                          n.type === 'margin' ? 'text-red-600' : 'text-gray-800'
+                        }`}
+                      >
+                        {n.title}
+                      </p>
+                      <span className="text-[10px] uppercase text-gray-400 font-semibold shrink-0">
+                        {n.type?.replace('_', ' ')}
+                      </span>
+                    </div>
+                    {n.body && (
+                      <p className="text-sm text-gray-600 mt-1 leading-relaxed">{n.body}</p>
+                    )}
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(n.created_at).toLocaleString('en-IN', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
                     </p>
                   </div>
                 </div>

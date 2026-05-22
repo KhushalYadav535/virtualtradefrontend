@@ -6,6 +6,29 @@ import { createChart } from 'lightweight-charts';
 import { Loader2 } from 'lucide-react';
 import { sanitizeCandles, sanitizeVolume, sanitizeLine, sanitizeLinePoints } from '../../../lib/chartData';
 import StockBrowsePanel from '../../../components/StockBrowsePanel';
+import { useAuthStore } from '../../../lib/store';
+import { getTradingPrefsFromUser } from '../../../lib/tradingPrefs';
+
+const CHART_THEMES = {
+  dark: {
+    background: '#0f172a',
+    text: '#e2e8f0',
+    grid: '#1e293b',
+    border: '#334155',
+    up: '#22c55e',
+    down: '#ef4444',
+    line: '#60a5fa'
+  },
+  light: {
+    background: '#ffffff',
+    text: '#333333',
+    grid: '#e0e0e0',
+    border: '#e0e0e0',
+    up: '#22c55e',
+    down: '#ef4444',
+    line: '#2563eb'
+  }
+};
 
 const TIMEFRAMES = [
   { label: '1m', value: '1m' },
@@ -24,6 +47,10 @@ const INDICATORS = [
 ];
 
 export default function ChartsPage() {
+  const { user } = useAuthStore();
+  const chartPrefs = getTradingPrefsFromUser(user);
+  const themeColors = CHART_THEMES[chartPrefs.chartTheme === 'light' ? 'light' : 'dark'];
+
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const candlestickSeriesRef = useRef(null);
@@ -33,7 +60,7 @@ export default function ChartsPage() {
 
   const [symbol, setSymbol] = useState('RELIANCE');
   const [selectedExchange, setSelectedExchange] = useState('NSE');
-  const [timeframe, setTimeframe] = useState('1d');
+  const [timeframe, setTimeframe] = useState(chartPrefs.chartDefaultTimeframe || '1d');
   const [loading, setLoading] = useState(false);
   const [chartType, setChartType] = useState('candlestick');
   const [quote, setQuote] = useState(null);
@@ -63,10 +90,15 @@ export default function ChartsPage() {
   };
 
   useEffect(() => {
+    const prefs = getTradingPrefsFromUser(user);
+    if (prefs.chartDefaultTimeframe) setTimeframe(prefs.chartDefaultTimeframe);
+  }, [user?.tradingPrefs]);
+
+  useEffect(() => {
     initChart();
     return () => destroyChart();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chartType]);
+  }, [chartType, chartPrefs.chartTheme]);
 
   useEffect(() => {
     loadData();
@@ -83,21 +115,21 @@ export default function ChartsPage() {
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: 'solid', color: '#ffffff' },
-        textColor: '#333',
+        background: { type: 'solid', color: themeColors.background },
+        textColor: themeColors.text,
       },
       grid: {
-        vertLines: { color: '#e0e0e0' },
-        horzLines: { color: '#e0e0e0' },
+        vertLines: { color: themeColors.grid },
+        horzLines: { color: themeColors.grid },
       },
       crosshair: {
         mode: 1,
       },
       rightPriceScale: {
-        borderColor: '#e0e0e0',
+        borderColor: themeColors.border,
       },
       timeScale: {
-        borderColor: '#e0e0e0',
+        borderColor: themeColors.border,
         timeVisible: true,
       },
     });
@@ -107,12 +139,12 @@ export default function ChartsPage() {
 
     if (chartType === 'candlestick') {
       const candlestickSeries = chart.addCandlestickSeries({
-        upColor: '#22c55e',
-        downColor: '#ef4444',
-        borderUpColor: '#22c55e',
-        borderDownColor: '#ef4444',
-        wickUpColor: '#22c55e',
-        wickDownColor: '#ef4444',
+        upColor: themeColors.up,
+        downColor: themeColors.down,
+        borderUpColor: themeColors.up,
+        borderDownColor: themeColors.down,
+        wickUpColor: themeColors.up,
+        wickDownColor: themeColors.down,
       });
       const volumeSeries = chart.addHistogramSeries({
         color: '#26a69a',
@@ -127,7 +159,7 @@ export default function ChartsPage() {
       lineSeriesRef.current = null;
     } else {
       lineSeriesRef.current = chart.addLineSeries({
-        color: '#2563eb',
+        color: themeColors.line,
         lineWidth: 2,
       });
       candlestickSeriesRef.current = null;

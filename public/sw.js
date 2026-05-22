@@ -1,5 +1,19 @@
-const CACHE_NAME = 'vtrade-v1';
+const CACHE_NAME = 'vtrade-v2';
 const OFFLINE_URL = '/offline.html';
+
+const offlineFallback = () =>
+  new Response('Offline', {
+    status: 503,
+    statusText: 'Service Unavailable',
+    headers: { 'Content-Type': 'text/plain' }
+  });
+
+async function matchOrOffline(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const offline = await caches.match(OFFLINE_URL);
+  return offline || offlineFallback();
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -37,10 +51,7 @@ self.addEventListener('fetch', (event) => {
 
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(async () => {
-        const cached = await caches.match(event.request);
-        return cached || caches.match(OFFLINE_URL);
-      })
+      fetch(event.request).catch(() => matchOrOffline(event.request))
     );
     return;
   }
@@ -48,7 +59,7 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/_next')) return;
 
   event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+    fetch(event.request).catch(() => matchOrOffline(event.request))
   );
 });
 

@@ -1,28 +1,57 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { auth } from '../../../lib/api';
+import { auth, legal } from '../../../lib/api';
 import { useAuthStore } from '../../../lib/store';
 import { clearAuthSession } from '../../../lib/authSession';
-import { User, Shield, Lock, Loader2, Eye, EyeOff, Bell, AlertTriangle, TrendingUp, Info } from 'lucide-react';
+import { DEFAULT_TRADING_PREFS, mergeTradingPrefs } from '../../../lib/tradingPrefs';
+import { useConnectionStore } from '../../../lib/connectionStore';
+import { reconnectSocket } from '../../../lib/socket';
+import { system } from '../../../lib/api';
+import { saveOfflineSnapshot } from '../../../lib/offlineCache';
+import {
+  User, Shield, Lock, Loader2, Eye, EyeOff, Bell, AlertTriangle, TrendingUp, Info, Palette, Download, Activity
+} from 'lucide-react';
 import PushNotificationToggle from '../../../components/PushNotificationToggle';
+import { authSecurity } from '../../../lib/api';
 
-const DEFAULT_TRADING_PREFS = {
-  chartTheme: 'dark',
-  defaultOrderType: 'MARKET',
-  defaultProductType: 'MIS',
-  qtyInputMode: 'lots',
-  lotRounding: 'up',
-  soundEffects: true,
-  orderPin: false,
-  defaultWatchlist: 'My Watchlist'
-};
-
-function mergeTradingPrefs(raw) {
-  if (!raw || typeof raw !== 'object') return { ...DEFAULT_TRADING_PREFS };
-  return { ...DEFAULT_TRADING_PREFS, ...raw };
+function OrderPinSetup() {
+  const [pin, setPin] = useState('');
+  const [password, setPassword] = useState('');
+  const [msg, setMsg] = useState('');
+  const save = async () => {
+    try {
+      await authSecurity.setOrderPin({ pin, password });
+      setMsg('PIN saved');
+      setPin('');
+      setPassword('');
+    } catch (e) {
+      setMsg(e.response?.data?.error || 'Failed');
+    }
+  };
+  return (
+    <div className="ml-7 p-3 border rounded-lg bg-gray-50 space-y-2 text-sm">
+      <p className="text-gray-600">Set 4-digit PIN (password required):</p>
+      <div className="flex gap-2 flex-wrap">
+        <input type="password" maxLength={4} placeholder="PIN" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} className="border rounded px-2 py-1 w-20" />
+        <input type="password" placeholder="Account password" value={password} onChange={(e) => setPassword(e.target.value)} className="border rounded px-2 py-1 flex-1 min-w-[120px]" />
+        <button type="button" onClick={save} className="px-3 py-1 bg-groww-primary text-white rounded">Save PIN</button>
+      </div>
+      {msg && <p className="text-xs text-gray-600">{msg}</p>}
+    </div>
+  );
 }
+
+const LEGAL_LINKS = [
+  { title: 'Terms of Service', desc: 'Educational use rules and disclaimers', href: '/legal/terms' },
+  { title: 'Privacy Policy', desc: 'How we handle your simulation data', href: '/legal/privacy' },
+  { title: 'Data Usage Policy', desc: 'Usage of analytics for leaderboards', href: '/legal/data-usage' },
+  { title: 'Cookie Policy', desc: 'Strictly necessary session mechanisms', href: '/legal/cookies' },
+  { title: 'Disclaimer', desc: 'No real money or real securities involved', href: '/legal/disclaimer' },
+  { title: 'Licenses & Attributions', desc: 'Open source software notices', href: '/legal/licenses' }
+];
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -53,7 +82,11 @@ export default function SettingsPage() {
     orders: true,
     alerts: true,
     achievements: true,
-    marketing: false
+    marketing: false,
+    lotChanges: true,
+    margin: true,
+    market: true,
+    funds: true
   });
   const [profileSaving, setProfileSaving] = useState(false);
   const [notifSaving, setNotifSaving] = useState(false);
@@ -63,6 +96,8 @@ export default function SettingsPage() {
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteErr, setDeleteErr] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [appInfo, setAppInfo] = useState(null);
 
   const applyUserToForm = (u) => {
     if (!u) return;
@@ -76,10 +111,22 @@ export default function SettingsPage() {
         orders: u.notificationPrefs.orders !== false,
         alerts: u.notificationPrefs.alerts !== false,
         achievements: u.notificationPrefs.achievements !== false,
-        marketing: u.notificationPrefs.marketing === true
+        marketing: u.notificationPrefs.marketing === true,
+        lotChanges: u.notificationPrefs.lotChanges !== false,
+        margin: u.notificationPrefs.margin !== false,
+        market: u.notificationPrefs.market !== false,
+        funds: u.notificationPrefs.funds !== false
       });
     }
-    setTradingPrefs(mergeTradingPrefs(u.tradingPrefs));
+    const merged = mergeTradingPrefs(u.tradingPrefs);
+    setTradingPrefs(merged);
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('tradingPrefs', JSON.stringify(merged));
+    }
+    useConnectionStore.getState().setLowDataMode(merged.lowDataMode);
+    if (typeof document !== 'undefined') {
+      document.documentElement.classList.toggle('dark', merged.appTheme === 'dark');
+    }
   };
 
   const loadProfile = async () => {
@@ -95,6 +142,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (user?.name) applyUserToForm(user);
     else loadProfile();
+    legal.getAppInfo().then(({ data }) => setAppInfo(data)).catch(() => {});
   }, []);
 
   const handleSaveProfile = async (e) => {
@@ -191,6 +239,24 @@ export default function SettingsPage() {
     }
   };
 
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const { data } = await auth.exportData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `virtualtrade-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(err.response?.data?.error || err.response?.data?.message || 'Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const handleSaveTradingPrefs = async () => {
     setTradingPrefsMsg('');
     setTradingPrefsSaving(true);
@@ -199,6 +265,9 @@ export default function SettingsPage() {
       const next = mergeTradingPrefs(data.user?.tradingPrefs);
       setTradingPrefs(next);
       setUser({ ...user, tradingPrefs: next });
+      localStorage.setItem('tradingPrefs', JSON.stringify(next));
+      useConnectionStore.getState().setLowDataMode(next.lowDataMode);
+      document.documentElement.classList.toggle('dark', next.appTheme === 'dark');
       setTradingPrefsMsg('Trading preferences saved');
     } catch (err) {
       setTradingPrefsMsg(err.response?.data?.error || err.response?.data?.message || 'Failed to save');
@@ -274,6 +343,28 @@ export default function SettingsPage() {
             <div className="flex items-center gap-2">
               <TrendingUp className="w-4 h-4" />
               Trading
+            </div>
+          </button>
+          <button
+            onClick={() => setTab('appearance')}
+            className={`w-full text-left px-4 py-3 rounded-lg transition ${
+              tab === 'appearance' ? 'bg-groww-primary-light text-groww-primary font-medium' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Palette className="w-4 h-4" />
+              Appearance
+            </div>
+          </button>
+          <button
+            onClick={() => setTab('performance')}
+            className={`w-full text-left px-4 py-3 rounded-lg transition ${
+              tab === 'performance' ? 'bg-groww-primary-light text-groww-primary font-medium' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              <Activity className="w-4 h-4" />
+              Performance
             </div>
           </button>
           <button
@@ -572,7 +663,11 @@ export default function SettingsPage() {
                     { key: 'orders', label: 'Order updates', desc: 'Executions, cancellations' },
                     { key: 'alerts', label: 'Price & volume alerts', desc: 'When your alerts trigger' },
                     { key: 'achievements', label: 'Achievements', desc: 'Badges and milestones' },
-                    { key: 'marketing', label: 'Tips & updates', desc: 'Product announcements' }
+                    { key: 'marketing', label: 'Tips & updates', desc: 'Product announcements' },
+                    { key: 'lotChanges', label: 'Lot size changes', desc: 'When exchange lot size changes for your holdings' },
+                    { key: 'margin', label: 'Margin alerts', desc: 'Low margin, auto square-off warnings' },
+                    { key: 'funds', label: 'Wallet', desc: 'Fund credits and debits' },
+                    { key: 'market', label: 'Market session', desc: 'Open/close reminders' }
                   ].map((item) => (
                     <label key={item.key} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100 hover:bg-gray-50 cursor-pointer">
                       <input
@@ -641,10 +736,57 @@ export default function SettingsPage() {
                    </select>
                  </div>
                  <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Chart default timeframe</label>
+                   <select value={tradingPrefs.chartDefaultTimeframe} onChange={(e) => setTradingPrefs({...tradingPrefs, chartDefaultTimeframe: e.target.value})} className="w-full px-4 py-2 border rounded-lg">
+                     <option value="1m">1 min</option>
+                     <option value="5m">5 min</option>
+                     <option value="15m">15 min</option>
+                     <option value="1d">1 day</option>
+                     <option value="1w">1 week</option>
+                     <option value="1mo">1 month</option>
+                   </select>
+                 </div>
+                 <div>
                    <label className="block text-sm font-medium text-gray-700 mb-1">Lot Rounding Preference</label>
                    <select value={tradingPrefs.lotRounding} onChange={(e) => setTradingPrefs({...tradingPrefs, lotRounding: e.target.value})} className="w-full px-4 py-2 border rounded-lg">
                      <option value="up">Round Up (Ceil)</option>
                      <option value="down">Round Down (Floor)</option>
+                     <option value="nearest">Nearest lot</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Default quantity (lots/shares)</label>
+                   <input type="number" min={1} max={999} value={tradingPrefs.defaultQty} onChange={(e) => setTradingPrefs({...tradingPrefs, defaultQty: parseInt(e.target.value, 10) || 1})} className="w-full px-4 py-2 border rounded-lg" />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Lot quick buttons (comma-separated)</label>
+                   <input
+                     type="text"
+                     value={(tradingPrefs.lotQuickButtons || []).join(', ')}
+                     onChange={(e) => {
+                       const nums = e.target.value.split(',').map((s) => parseInt(s.trim(), 10)).filter((n) => n > 0).slice(0, 6);
+                       setTradingPrefs({ ...tradingPrefs, lotQuickButtons: nums.length ? nums : DEFAULT_TRADING_PREFS.lotQuickButtons });
+                     }}
+                     className="w-full px-4 py-2 border rounded-lg"
+                     placeholder="1, 2, 5, 10"
+                   />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Auto square-off reminder time</label>
+                   <input type="time" value={tradingPrefs.autoSquareOffTime} onChange={(e) => setTradingPrefs({...tradingPrefs, autoSquareOffTime: e.target.value})} className="w-full px-4 py-2 border rounded-lg" />
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Price display</label>
+                   <select value={tradingPrefs.priceDisplayFormat} onChange={(e) => setTradingPrefs({...tradingPrefs, priceDisplayFormat: e.target.value})} className="w-full px-4 py-2 border rounded-lg">
+                     <option value="inr">₹ Price</option>
+                     <option value="percent">% Change</option>
+                   </select>
+                 </div>
+                 <div>
+                   <label className="block text-sm font-medium text-gray-700 mb-1">Lot value display</label>
+                   <select value={tradingPrefs.lotValueDisplayFormat} onChange={(e) => setTradingPrefs({...tradingPrefs, lotValueDisplayFormat: e.target.value})} className="w-full px-4 py-2 border rounded-lg">
+                     <option value="per_lot">Per lot</option>
+                     <option value="total">Total per lot</option>
                    </select>
                  </div>
                  <div>
@@ -658,14 +800,28 @@ export default function SettingsPage() {
               </div>
 
               <div className="pt-6 border-t border-gray-100 space-y-4">
+                 <label className="flex items-center gap-3 cursor-pointer">
+                   <input type="checkbox" checked={tradingPrefs.showLotSizeEverywhere} onChange={(e) => setTradingPrefs({...tradingPrefs, showLotSizeEverywhere: e.target.checked})} className="w-4 h-4 text-groww-primary" />
+                   <div>
+                      <p className="font-medium text-gray-800">Show lot size on trade screen</p>
+                      <p className="text-xs text-gray-500">Always display lot info panel when trading F&O</p>
+                   </div>
+                 </label>
                  {tradingPrefsMsg && (
                    <p className={`text-sm ${tradingPrefsMsg.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>{tradingPrefsMsg}</p>
                  )}
                  <label className="flex items-center gap-3 cursor-pointer">
                    <input type="checkbox" checked={tradingPrefs.soundEffects} onChange={(e) => setTradingPrefs({...tradingPrefs, soundEffects: e.target.checked})} className="w-4 h-4 text-groww-primary" />
                    <div>
-                      <p className="font-medium text-gray-800">Sound Effects & Haptics</p>
+                      <p className="font-medium text-gray-800">Sound effects</p>
                       <p className="text-xs text-gray-500">Play sound on order execution</p>
+                   </div>
+                 </label>
+                 <label className="flex items-center gap-3 cursor-pointer">
+                   <input type="checkbox" checked={tradingPrefs.hapticFeedback} onChange={(e) => setTradingPrefs({...tradingPrefs, hapticFeedback: e.target.checked})} className="w-4 h-4 text-groww-primary" />
+                   <div>
+                      <p className="font-medium text-gray-800">Haptic feedback (mobile)</p>
+                      <p className="text-xs text-gray-500">Vibrate on order events in the app</p>
                    </div>
                  </label>
                  <label className="flex items-center gap-3 cursor-pointer">
@@ -675,6 +831,9 @@ export default function SettingsPage() {
                       <p className="text-xs text-gray-500">Require PIN before placing trades</p>
                    </div>
                  </label>
+                 {tradingPrefs.orderPin && (
+                   <OrderPinSetup />
+                 )}
               </div>
 
               <button
@@ -689,6 +848,129 @@ export default function SettingsPage() {
             </div>
           )}
 
+          {tab === 'performance' && (
+            <div className="space-y-6">
+              <h2 className="text-lg font-semibold text-gray-800">Performance & connectivity</h2>
+              <p className="text-sm text-gray-500">Control live updates, offline cache, and data usage for paper trading.</p>
+              <label className="flex items-center justify-between p-4 border rounded-xl">
+                <div>
+                  <p className="font-medium text-gray-800">Low data mode</p>
+                  <p className="text-xs text-gray-500">Slower polling (15s+) and fewer background refreshes</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={tradingPrefs.lowDataMode}
+                  onChange={(e) => setTradingPrefs({ ...tradingPrefs, lowDataMode: e.target.checked })}
+                  className="w-4 h-4"
+                />
+              </label>
+              <label className="flex items-center justify-between p-4 border rounded-xl">
+                <div>
+                  <p className="font-medium text-gray-800">Prefer WebSocket</p>
+                  <p className="text-xs text-gray-500">Live prices via socket; falls back to REST polling</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={tradingPrefs.preferWebSocket}
+                  onChange={(e) => setTradingPrefs({ ...tradingPrefs, preferWebSocket: e.target.checked })}
+                  className="w-4 h-4"
+                />
+              </label>
+              <label className="flex items-center justify-between p-4 border rounded-xl">
+                <div>
+                  <p className="font-medium text-gray-800">Offline price cache</p>
+                  <p className="text-xs text-gray-500">Save last quotes for when you lose connectivity</p>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={tradingPrefs.offlineCacheEnabled}
+                  onChange={(e) => setTradingPrefs({ ...tradingPrefs, offlineCacheEnabled: e.target.checked })}
+                  className="w-4 h-4"
+                />
+              </label>
+              <div className="p-4 border rounded-xl">
+                <p className="font-medium text-gray-800 mb-2">Poll interval (seconds)</p>
+                <input
+                  type="number"
+                  min={5}
+                  max={60}
+                  value={tradingPrefs.pollIntervalSec}
+                  onChange={(e) =>
+                    setTradingPrefs({ ...tradingPrefs, pollIntervalSec: parseInt(e.target.value, 10) || 5 })
+                  }
+                  className="w-24 px-3 py-2 border rounded-lg"
+                />
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setTradingPrefsSaving(true);
+                    try {
+                      await handleSaveTradingPrefs();
+                      reconnectSocket();
+                    } finally {
+                      setTradingPrefsSaving(false);
+                    }
+                  }}
+                  disabled={tradingPrefsSaving}
+                  className="px-4 py-2 bg-groww-primary text-white rounded-lg font-semibold"
+                >
+                  Save & reconnect
+                </button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const { data } = await system.getCacheSnapshot();
+                    saveOfflineSnapshot(data);
+                    alert('Offline cache refreshed');
+                  }}
+                  className="px-4 py-2 border rounded-lg font-medium"
+                >
+                  Refresh offline cache
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tab === 'appearance' && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
+              <h2 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                <Palette className="w-5 h-5" />
+                Appearance
+              </h2>
+              <p className="text-sm text-gray-500 mb-4">Dashboard theme and chart defaults.</p>
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">App theme</label>
+                  <select value={tradingPrefs.appTheme} onChange={(e) => setTradingPrefs({ ...tradingPrefs, appTheme: e.target.value })} className="w-full px-4 py-2 border rounded-lg">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Chart theme</label>
+                  <select value={tradingPrefs.chartTheme} onChange={(e) => setTradingPrefs({ ...tradingPrefs, chartTheme: e.target.value })} className="w-full px-4 py-2 border rounded-lg">
+                    <option value="light">Light</option>
+                    <option value="dark">Dark</option>
+                  </select>
+                </div>
+              </div>
+              {tradingPrefsMsg && (
+                <p className={`text-sm ${tradingPrefsMsg.includes('Failed') ? 'text-red-600' : 'text-green-600'}`}>{tradingPrefsMsg}</p>
+              )}
+              <button
+                type="button"
+                disabled={tradingPrefsSaving}
+                onClick={handleSaveTradingPrefs}
+                className="px-4 py-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark disabled:opacity-50 flex items-center gap-2"
+              >
+                {tradingPrefsSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                Save appearance
+              </button>
+            </div>
+          )}
+
           {tab === 'about' && (
             <div className="bg-white rounded-xl border border-gray-200 p-6 space-y-6">
               <div>
@@ -699,23 +981,44 @@ export default function SettingsPage() {
                 <p className="text-sm text-gray-500 mb-6">Important policies and terms for VirtualTrade.</p>
               </div>
 
+              {appInfo && (
+              <div className="mb-4 p-4 rounded-lg bg-gray-50 border border-gray-100 text-sm text-gray-600">
+                <p className="font-medium text-gray-800">
+                  {appInfo.name} v{appInfo.webVersion}
+                </p>
+                <p className="text-xs mt-1">
+                  {appInfo.tagline} · API v{appInfo.version} · App v{appInfo.appVersion}
+                </p>
+                <p className="text-xs mt-2">
+                  <Link href="/legal" className="text-groww-primary hover:underline">Legal hub</Link>
+                  {' · '}Updated {appInfo.lastUpdated}
+                </p>
+              </div>
+              )}
               <div className="space-y-4">
-                 {[
-                   { title: 'Terms of Service', desc: 'Educational use rules and disclaimers' },
-                   { title: 'Privacy Policy', desc: 'How we handle your simulation data' },
-                   { title: 'Data Usage Policy', desc: 'Usage of analytics for leaderboards' },
-                   { title: 'Cookie Policy', desc: 'Strictly necessary session mechanisms' },
-                   { title: 'Disclaimer', desc: 'No real money or real securities involved' },
-                   { title: 'Licenses & Attributions', desc: 'Open source software notices' }
-                 ].map((doc, i) => (
-                    <div key={i} className="p-4 border border-gray-100 rounded-lg hover:bg-gray-50 cursor-pointer flex justify-between items-center transition">
+                 {LEGAL_LINKS.map((doc) => (
+                    <Link key={doc.href} href={doc.href} className="block p-4 border border-gray-100 rounded-lg hover:bg-gray-50 flex justify-between items-center transition">
                        <div>
                          <h3 className="font-semibold text-gray-800">{doc.title}</h3>
                          <p className="text-sm text-gray-500">{doc.desc}</p>
                        </div>
                        <div className="text-groww-primary font-medium text-sm">View</div>
-                    </div>
+                    </Link>
                  ))}
+              </div>
+
+              <div className="pt-6 border-t border-gray-100">
+                <h3 className="font-semibold text-gray-800 mb-2">Export your data</h3>
+                <p className="text-sm text-gray-500 mb-4">Download profile, orders, holdings, alerts, and notifications as JSON.</p>
+                <button
+                  type="button"
+                  onClick={handleExportData}
+                  disabled={exporting}
+                  className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-gray-800 disabled:opacity-50"
+                >
+                  {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                  Download JSON export
+                </button>
               </div>
             </div>
           )}

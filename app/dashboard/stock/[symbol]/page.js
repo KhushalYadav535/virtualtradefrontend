@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import { market } from '../../../../lib/api';
+import MarketDepthPanel from '../../../../components/MarketDepthPanel';
 import { usePortfolioStore } from '../../../../lib/store';
 import { Loader2, TrendingUp, TrendingDown, ArrowLeft, Wallet } from 'lucide-react';
 
@@ -55,7 +56,14 @@ function StockDetailContent() {
 
   const isUp = (quote.change || 0) >= 0;
   const cashBalance = summary?.cashBalance ?? 0;
-  const affordableLots = quote?.ltp && quote?.lotSize ? Math.floor(cashBalance / (quote.ltp * quote.lotSize)) : 0;
+  const foLot = quote?.lotSize || 1;
+  const cncLot = quote?.lotSizeCnc ?? 1;
+  const lotValueFo = quote?.lotValue ?? (quote.ltp ? quote.ltp * foLot : null);
+  const lotValueCnc = quote?.lotValueCnc ?? quote.ltp;
+  const affordableFoLots =
+    quote?.ltp && foLot > 0 ? Math.floor(cashBalance / (quote.ltp * foLot)) : 0;
+  const affordableCncQty =
+    quote?.ltp && cncLot > 0 ? Math.floor(cashBalance / (quote.ltp * cncLot)) : 0;
 
   return (
     <div className="space-y-6">
@@ -93,7 +101,11 @@ function StockDetailContent() {
           { label: 'High', value: quote.high },
           { label: 'Low', value: quote.low },
           { label: 'Prev Close', value: quote.previousClose || quote.prevClose },
-          { label: 'Lot Size', value: quote.lotSize },
+          { label: 'Lot Size (F&O)', value: foLot },
+          { label: 'Lot Size (CNC)', value: cncLot },
+          { label: 'Lot Value (F&O)', value: lotValueFo != null ? `₹${lotValueFo.toLocaleString('en-IN')}` : null },
+          { label: 'Lot Value (CNC)', value: lotValueCnc != null ? `₹${Number(lotValueCnc).toLocaleString('en-IN')}` : null },
+          { label: 'Freeze Qty (lots)', value: quote.freezeQtyLots },
           { label: 'Volume', value: quote.volume },
           { label: '52W High', value: quote.week52High },
           { label: '52W Low', value: quote.week52Low },
@@ -116,12 +128,14 @@ function StockDetailContent() {
         ))}
       </div>
 
+      <MarketDepthPanel symbol={quote.symbol} />
+
       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 text-blue-900">
           <Wallet className="w-5 h-5 text-blue-500" />
           <div>
             <p className="text-sm">Cash Available: ₹{cashBalance.toLocaleString('en-IN')}</p>
-            <p className="font-semibold">Max Affordable Lots: {affordableLots}</p>
+            <p className="font-semibold">Max F&amp;O lots: {affordableFoLots} · Max CNC qty: {affordableCncQty}</p>
           </div>
         </div>
       </div>
@@ -129,10 +143,17 @@ function StockDetailContent() {
       <div className="flex gap-3">
         <button
           type="button"
-          onClick={() => router.push(`/dashboard/trade?symbol=${quote.symbol}&exchange=${exchange}`)}
+          onClick={() => router.push(`/dashboard/trade?symbol=${quote.symbol}&exchange=${exchange}&side=BUY`)}
           className="px-6 py-2.5 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
         >
-          Trade
+          Buy
+        </button>
+        <button
+          type="button"
+          onClick={() => router.push(`/dashboard/trade?symbol=${quote.symbol}&exchange=${exchange}&side=SELL`)}
+          className="px-6 py-2.5 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+        >
+          Sell
         </button>
         <button
           type="button"

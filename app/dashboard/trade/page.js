@@ -6,13 +6,16 @@ import { Loader2 } from 'lucide-react';
 import StockBrowsePanel from '../../../components/StockBrowsePanel';
 import TradeOrderPanel from '../../../components/TradeOrderPanel';
 import { market, portfolio } from '../../../lib/api';
-import { usePortfolioStore, useMarketStore } from '../../../lib/store';
+import { usePortfolioStore, useMarketStore, useAuthStore } from '../../../lib/store';
+import { getTradingPrefsFromUser } from '../../../lib/tradingPrefs';
 import { initSocket, subscribeStock, unsubscribeStock } from '../../../lib/socket';
 
 function TradeContent() {
   const searchParams = useSearchParams();
   const { summary, setSummary } = usePortfolioStore();
   const { prices } = useMarketStore();
+  const { user } = useAuthStore();
+  const prefs = getTradingPrefsFromUser(user);
 
   const [selected, setSelected] = useState(null);
   const [quote, setQuote] = useState(null);
@@ -20,6 +23,12 @@ function TradeContent() {
 
   const symbol = selected?.symbol;
   const exchange = selected?.exchange || 'NSE';
+  const sideParam = searchParams.get('side');
+  const productParam = searchParams.get('product');
+  const initialOrderType = sideParam === 'SELL' ? 'SELL' : 'BUY';
+  const initialProductType = ['CNC', 'MIS', 'NRML'].includes(productParam)
+    ? productParam
+    : prefs.defaultProductType;
   const liveQuote = symbol ? prices[symbol] : null;
   const ltp = liveQuote?.ltp ?? quote?.ltp;
   const lotSize = liveQuote?.lotSize ?? quote?.lotSize ?? 1;
@@ -101,7 +110,9 @@ function TradeContent() {
                 quote={quote}
                 ltp={ltp}
                 lotSize={lotSize}
-                availableBalance={summary?.balance ?? 0}
+                availableBalance={summary?.cashBalance ?? summary?.balance ?? 0}
+                initialOrderType={initialOrderType}
+                initialProductType={initialProductType}
                 onSuccess={(s) => setSummary(s)}
               />
             </>

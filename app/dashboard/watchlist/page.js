@@ -4,11 +4,14 @@ import { useEffect, useState, useMemo } from 'react';
 import { watchlist, market } from '../../../lib/api';
 import { useMarketStore } from '../../../lib/store';
 import { initSocket } from '../../../lib/socket';
+import { getPollIntervalMs } from '../../../lib/pollInterval';
+import { mergeTradingPrefs } from '../../../lib/tradingPrefs';
 import Link from 'next/link';
 import {
   Star, Plus, Trash2, Loader2, TrendingUp, TrendingDown, Pencil,
-  Share2, ChevronUp, ChevronDown, Copy, Check
+  Share2, ChevronUp, ChevronDown, Copy, Check, GripVertical, RefreshCw, Cloud
 } from 'lucide-react';
+import WatchlistSymbolSearch from '../../../components/WatchlistSymbolSearch';
 
 export default function WatchlistPage() {
   const [watchlists, setWatchlists] = useState([]);
@@ -30,7 +33,12 @@ export default function WatchlistPage() {
   const [filterBy, setFilterBy] = useState('all');
   const [lotFilter, setLotFilter] = useState('all');
   const [toast, setToast] = useState('');
-  const { prices, updatePrice } = useMarketStore();
+  const [dragIndex, setDragIndex] = useState(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState(null);
+  const [syncing, setSyncing] = useState(false);
+  const { prices, updatePrice, updatePrices } = useMarketStore();
+
+  const canDragReorder = sortBy === 'default' && filterBy === 'all' && lotFilter === 'all';
 
   const showToast = (msg) => {
     setToast(msg);
@@ -41,14 +49,36 @@ export default function WatchlistPage() {
     loadWatchlists();
     watchlist.getTemplates().then(({ data }) => setTemplates(data || [])).catch(() => {});
     const socket = initSocket();
-    socket.on('priceUpdate', (data) => updatePrice(data.quotes));
+    const onPrices = (data) => {
+      const quotes = data?.quotes;
+      if (Array.isArray(quotes) && quotes.length) {
+        useMarketStore.getState().updatePrices(quotes);
+      }
+    };
+    socket?.on('priceUpdate', onPrices);
+    socket?.on('indexUpdate', onPrices);
+    return () => {
+      socket?.off('priceUpdate', onPrices);
+      socket?.off('indexUpdate', onPrices);
+    };
   }, []);
 
   useEffect(() => {
-    if (selectedWatchlist?.symbols?.length) {
-      selectedWatchlist.symbols.forEach((sym) => loadQuote(sym));
-    }
-  }, [selectedWatchlist?.id, selectedWatchlist?.symbols?.length]);
+    const syms = selectedWatchlist?.symbols;
+    if (!syms?.length) return;
+    const loadBatch = async () => {
+      try {
+        const { data } = await market.getQuotes(syms);
+        if (Array.isArray(data) && data.length) updatePrices(data);
+      } catch {
+        syms.forEach((sym) => loadQuote(sym));
+      }
+    };
+    loadBatch();
+    const prefs = mergeTradingPrefs(JSON.parse(localStorage.getItem('tradingPrefs') || 'null'));
+    const t = setInterval(loadBatch, getPollIntervalMs(prefs, navigator.onLine));
+    return () => clearInterval(t);
+  }, [selectedWatchlist?.id, selectedWatchlist?.symbols?.join(',')]);
 
   const loadWatchlists = async () => {
     try {
@@ -59,12 +89,33 @@ export default function WatchlistPage() {
       } else {
         setSelectedWatchlist(null);
       }
+      setLastSyncedAt(new Date());
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('watchlistLastSync', String(Date.now()));
+      }
     } catch (err) {
       console.error(err);
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSyncNow = async () => {
+    setSyncing(true);
+    try {
+      await loadWatchlists();
+      showToast('Watchlist synced from server');
+    } catch {
+      showToast('Sync failed');
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    const stored = localStorage.getItem('watchlistLastSync');
+    if (stored) setLastSyncedAt(new Date(parseInt(stored, 10)));
+  }, []);
 
   const loadQuote = async (sym) => {
     try {
@@ -120,11 +171,16 @@ export default function WatchlistPage() {
 
   const handleAddSymbol = async () => {
     if (!addSymbol.trim() || !selectedWatchlist) return;
-    const sym = addSymbol.trim().toUpperCase();
+    await handleAddSymbolFromSearch(addSymbol.trim().toUpperCase());
+  };
+
+  const handleAddSymbolFromSearch = async (sym) => {
+    if (!sym || !selectedWatchlist) return;
+    const symbol = sym.trim().toUpperCase();
     try {
-      await watchlist.add(selectedWatchlist.id, sym);
+      await watchlist.add(selectedWatchlist.id, symbol);
       await loadWatchlists();
-      loadQuote(sym);
+      loadQuote(symbol);
       setAddSymbol('');
     } catch (err) {
       showToast(err.response?.data?.error || 'Could not add symbol');
@@ -187,12 +243,8 @@ export default function WatchlistPage() {
     }
   };
 
-  const moveSymbol = async (index, direction) => {
-    if (!selectedWatchlist?.symbols) return;
-    const next = [...selectedWatchlist.symbols];
-    const j = index + direction;
-    if (j < 0 || j >= next.length) return;
-    [next[index], next[j]] = [next[j], next[index]];
+  const persistSymbolOrder = async (next) => {
+    if (!selectedWatchlist) return;
     try {
       await watchlist.reorder(selectedWatchlist.id, next);
       setSelectedWatchlist({ ...selectedWatchlist, symbols: next });
@@ -202,13 +254,33 @@ export default function WatchlistPage() {
     }
   };
 
+  const moveSymbol = async (index, direction) => {
+    if (!selectedWatchlist?.symbols) return;
+    const next = [...selectedWatchlist.symbols];
+    const j = index + direction;
+    if (j < 0 || j >= next.length) return;
+    [next[index], next[j]] = [next[j], next[index]];
+    await persistSymbolOrder(next);
+  };
+
+  const handleDragDrop = async (fromIndex, toIndex) => {
+    if (!selectedWatchlist?.symbols || fromIndex === toIndex) return;
+    const next = [...selectedWatchlist.symbols];
+    const [moved] = next.splice(fromIndex, 1);
+    next.splice(toIndex, 0, moved);
+    setDragIndex(null);
+    await persistSymbolOrder(next);
+  };
+
   const sortedSymbols = useMemo(() => {
     let syms = selectedWatchlist?.symbols || [];
     
     if (filterBy === 'gainers') {
-      syms = syms.filter(s => (prices[s]?.changePercent || 0) >= 0);
+      syms = syms.filter((s) => (prices[s]?.changePercent || 0) > 0);
     } else if (filterBy === 'losers') {
-      syms = syms.filter(s => (prices[s]?.changePercent || 0) < 0);
+      syms = syms.filter((s) => (prices[s]?.changePercent || 0) < 0);
+    } else if (filterBy === 'active') {
+      syms = [...syms].sort((a, b) => (prices[b]?.volume || 0) - (prices[a]?.volume || 0)).slice(0, 50);
     }
 
     if (lotFilter === 'eq1') {
@@ -227,6 +299,12 @@ export default function WatchlistPage() {
     }
     if (sortBy === 'price') {
       return [...syms].sort((a, b) => (prices[b]?.ltp ?? 0) - (prices[a]?.ltp ?? 0));
+    }
+    if (sortBy === 'lotSize') {
+      return [...syms].sort((a, b) => (prices[b]?.lotSize ?? 1) - (prices[a]?.lotSize ?? 1));
+    }
+    if (sortBy === 'volume') {
+      return [...syms].sort((a, b) => (prices[b]?.volume ?? 0) - (prices[a]?.volume ?? 0));
     }
     return syms;
   }, [selectedWatchlist?.symbols, sortBy, filterBy, lotFilter, prices]);
@@ -255,9 +333,28 @@ export default function WatchlistPage() {
         </div>
       )}
 
-      <div>
-        <h1 className="text-2xl font-bold text-gray-800">Watchlist</h1>
-        <p className="text-gray-500">Track stocks, import presets, and share lists</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Watchlist</h1>
+          <p className="text-gray-500">Synced across devices when you log in</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <Cloud className="w-4 h-4" />
+            {lastSyncedAt
+              ? `Last synced ${lastSyncedAt.toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}`
+              : 'Not synced yet'}
+          </div>
+          <button
+            type="button"
+            onClick={handleSyncNow}
+            disabled={syncing}
+            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+            Sync now
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 p-4">
@@ -321,7 +418,10 @@ export default function WatchlistPage() {
                   <>
                     <div className="flex items-center gap-2 flex-1 cursor-pointer" onClick={() => setSelectedWatchlist(wl)}>
                       <Star className={`w-4 h-4 ${selectedWatchlist?.id === wl.id ? 'text-groww-primary fill-groww-primary' : 'text-gray-400'}`} />
-                      <span className="font-medium">{wl.name} {wl.isDefault || watchlists[0]?.id === wl.id ? <span className="text-xs text-gray-400 font-normal">(Default)</span> : ''}</span>
+                      <span className="font-medium">
+                        {wl.name}
+                        {wl.isDefault ? <span className="text-xs text-gray-400 font-normal"> (Default)</span> : ''}
+                      </span>
                     </div>
                     <div className="flex items-center gap-1">
                       <span className="text-sm text-gray-500">{wl.symbols?.length || 0}</span>
@@ -411,6 +511,7 @@ export default function WatchlistPage() {
                     <option value="all">All</option>
                     <option value="gainers">Gainers</option>
                     <option value="losers">Losers</option>
+                    <option value="active">Most active</option>
                   </select>
                   <select
                     value={sortBy}
@@ -421,6 +522,8 @@ export default function WatchlistPage() {
                     <option value="alpha">A–Z</option>
                     <option value="change">% change</option>
                     <option value="price">Price</option>
+                    <option value="lotSize">Lot size</option>
+                    <option value="volume">Volume</option>
                   </select>
                 </div>
               </div>
@@ -439,15 +542,18 @@ export default function WatchlistPage() {
               )}
 
               <div className="flex gap-2 mb-6">
-                <input
-                  type="text"
-                  value={addSymbol}
-                  onChange={(e) => setAddSymbol(e.target.value.toUpperCase())}
-                  placeholder="Add symbol..."
-                  className="flex-1 px-4 py-2 border rounded-lg"
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddSymbol()}
+                <WatchlistSymbolSearch
+                  onSelect={(sym) => {
+                    setAddSymbol(sym);
+                    handleAddSymbolFromSearch(sym);
+                  }}
                 />
-                <button onClick={handleAddSymbol} className="px-4 py-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark">
+                <button
+                  type="button"
+                  onClick={handleAddSymbol}
+                  disabled={!addSymbol.trim()}
+                  className="px-4 py-2 bg-groww-primary text-white rounded-lg hover:bg-groww-primary-dark disabled:opacity-50"
+                >
                   Add
                 </button>
               </div>
@@ -457,7 +563,7 @@ export default function WatchlistPage() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-gray-200">
-                        {sortBy === 'default' && <th className="w-16" />}
+                        {sortBy === 'default' && <th className="w-20" />}
                         <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">Symbol</th>
                         <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Lot</th>
                         <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">Volume</th>
@@ -471,16 +577,31 @@ export default function WatchlistPage() {
                         const q = getPriceData(sym);
                         const realIndex = selectedWatchlist.symbols.indexOf(sym);
                         return (
-                          <tr key={sym} className="border-b border-gray-100 hover:bg-gray-50">
+                          <tr
+                            key={sym}
+                            className={`border-b border-gray-100 hover:bg-gray-50 ${dragIndex === realIndex ? 'opacity-50' : ''}`}
+                            draggable={canDragReorder}
+                            onDragStart={() => canDragReorder && setDragIndex(realIndex)}
+                            onDragEnd={() => setDragIndex(null)}
+                            onDragOver={(e) => canDragReorder && e.preventDefault()}
+                            onDrop={() => canDragReorder && dragIndex != null && handleDragDrop(dragIndex, realIndex)}
+                          >
                             {sortBy === 'default' && (
                               <td className="py-2 px-2">
-                                <div className="flex flex-col">
-                                  <button type="button" onClick={() => moveSymbol(realIndex, -1)} className="p-0.5 text-gray-400 hover:text-gray-700">
-                                    <ChevronUp className="w-4 h-4" />
-                                  </button>
-                                  <button type="button" onClick={() => moveSymbol(realIndex, 1)} className="p-0.5 text-gray-400 hover:text-gray-700">
-                                    <ChevronDown className="w-4 h-4" />
-                                  </button>
+                                <div className="flex items-center gap-0.5">
+                                  {canDragReorder && (
+                                    <span className="cursor-grab text-gray-400 active:cursor-grabbing" title="Drag to reorder">
+                                      <GripVertical className="w-4 h-4" />
+                                    </span>
+                                  )}
+                                  <div className="flex flex-col">
+                                    <button type="button" onClick={() => moveSymbol(realIndex, -1)} className="p-0.5 text-gray-400 hover:text-gray-700">
+                                      <ChevronUp className="w-4 h-4" />
+                                    </button>
+                                    <button type="button" onClick={() => moveSymbol(realIndex, 1)} className="p-0.5 text-gray-400 hover:text-gray-700">
+                                      <ChevronDown className="w-4 h-4" />
+                                    </button>
+                                  </div>
                                 </div>
                               </td>
                             )}
@@ -507,15 +628,31 @@ export default function WatchlistPage() {
                               {q ? `₹${q.ltp?.toLocaleString()}` : '—'}
                             </td>
                             <td className={`py-3 px-4 text-right ${(q?.changePercent || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              <span className="inline-flex items-center gap-1 justify-end">
-                                {(q?.changePercent || 0) >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                                {q?.changePercent != null ? `${q.changePercent.toFixed(2)}%` : '—'}
-                              </span>
+                              <div className="flex flex-col items-end gap-0.5">
+                                <span className="inline-flex items-center gap-1">
+                                  {(q?.changePercent || 0) >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                                  {q?.change != null
+                                    ? `${q.change >= 0 ? '+' : ''}₹${Math.abs(q.change).toFixed(2)}`
+                                    : '—'}
+                                </span>
+                                <span className="text-xs opacity-90">
+                                  {q?.changePercent != null ? `${q.changePercent >= 0 ? '+' : ''}${q.changePercent.toFixed(2)}%` : ''}
+                                </span>
+                              </div>
                             </td>
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Link href={`/dashboard/trade?symbol=${sym}&exchange=NSE`} className="text-xs font-medium text-groww-primary hover:underline">
-                                  Trade
+                                <Link
+                                  href={`/dashboard/trade?symbol=${sym}&exchange=NSE&side=BUY`}
+                                  className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
+                                >
+                                  Buy
+                                </Link>
+                                <Link
+                                  href={`/dashboard/trade?symbol=${sym}&exchange=NSE&side=SELL`}
+                                  className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700"
+                                >
+                                  Sell
                                 </Link>
                                 <button type="button" onClick={() => handleRemoveSymbol(sym)} className="p-1 text-gray-400 hover:text-red-500">
                                   <Trash2 className="w-4 h-4" />
