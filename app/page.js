@@ -2,9 +2,9 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import axios from 'axios';
 import { getDeviceFingerprint } from '../lib/secureStorage';
 import { auth } from '../lib/api';
+import { getApiBaseUrl } from '../lib/apiBase';
 import { persistLoginSession } from '../lib/authSession';
 import { TrendingUp, Shield, BarChart3, ArrowRight, DollarSign, Eye, EyeOff, Sparkles } from 'lucide-react';
 
@@ -32,8 +32,8 @@ function HomeContent() {
       router.push(`/verify-email?email=${encodeURIComponent(data.email || form.email)}`);
       return true;
     }
-    if (!process.env.NEXT_PUBLIC_API_URL) {
-      setError('API URL not configured. Set NEXT_PUBLIC_API_URL in .env.local');
+    if (!getApiBaseUrl()) {
+      setError('API URL not configured. Set NEXT_PUBLIC_API_URL on Vercel.');
       return true;
     }
     if (!data.accessToken || !data.user) {
@@ -88,14 +88,22 @@ function HomeContent() {
       return handlePhoneSubmit(e);
     }
     try {
-      const url = isLogin ? '/auth/login' : '/auth/register';
       const payload = isLogin
         ? { ...form, deviceFingerprint: getDeviceFingerprint(), deviceLabel: 'Web browser' }
         : form;
-      const { data } = await axios.post(`${process.env.NEXT_PUBLIC_API_URL}${url}`, payload);
+      const { data } = isLogin
+        ? await auth.login(payload)
+        : await auth.register(payload);
       if (finishAuth(data)) return;
     } catch (err) {
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
+      const status = err.response?.status;
+      let errorMessage = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
+      if (status === 500) {
+        errorMessage = 'Server error — check Vercel NEXT_PUBLIC_API_URL points to Render /api';
+      }
+      if (status === 502 || status === 503) {
+        errorMessage = 'Backend waking up — wait 30s and try again';
+      }
       setError(errorMessage);
     }
   };
