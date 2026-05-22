@@ -97,12 +97,22 @@ function HomeContent() {
       if (finishAuth(data)) return;
     } catch (err) {
       const status = err.response?.status;
-      let errorMessage = err.response?.data?.error || err.response?.data?.message || 'Something went wrong';
-      if (status === 500) {
-        errorMessage = 'Server error — check Vercel NEXT_PUBLIC_API_URL points to Render /api';
-      }
-      if (status === 502 || status === 503) {
+      const apiUrl = getApiBaseUrl();
+      const serverMsg = err.response?.data?.error || err.response?.data?.message;
+      let errorMessage = serverMsg || 'Something went wrong';
+
+      if (status === 401) {
+        errorMessage = serverMsg || 'Invalid email or password';
+      } else if (status === 404) {
+        errorMessage = `API not found (${apiUrl}). Set Vercel NEXT_PUBLIC_API_URL to https://virtualtradebackend.onrender.com/api and redeploy.`;
+      } else if (status === 500) {
+        errorMessage = serverMsg
+          ? `${serverMsg} (API: ${apiUrl})`
+          : `Server error. API: ${apiUrl}. Fix Vercel env NEXT_PUBLIC_API_URL → https://virtualtradebackend.onrender.com/api then redeploy.`;
+      } else if (status === 502 || status === 503) {
         errorMessage = 'Backend waking up — wait 30s and try again';
+      } else if (!err.response) {
+        errorMessage = `Cannot reach API (${apiUrl}). Check network or backend URL on Vercel.`;
       }
       setError(errorMessage);
     }
