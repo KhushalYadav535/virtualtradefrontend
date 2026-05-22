@@ -22,6 +22,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <head>
+        <link rel="preconnect" href="https://virtualtradebackend.onrender.com" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://virtualtradebackend.onrender.com" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="apple-touch-icon" href="/icon.svg" />
       </head>

@@ -22,7 +22,7 @@ import { loadCachedPortfolioSummary, savePortfolioSummaryCache } from '../../lib
 import { mergeTradingPrefs } from '../../lib/tradingPrefs';
 import { navLabel, getLocaleFromUser } from '../../lib/i18n';
 
-const PROFILE_SYNC_MS = 8000;
+const PROFILE_SYNC_MS = 4000;
 
 function deferNonCritical(fn) {
   if (typeof window === 'undefined') return;
@@ -113,7 +113,7 @@ export default function DashboardLayout({ children }) {
     const conn = useConnectionStore.getState();
     conn.setBackendWaking(true);
     try {
-      const awake = await waitForBackend(45000);
+      const awake = await waitForBackend(10000);
       if (!awake) {
         conn.setApiReachable(false);
         return;
@@ -144,10 +144,14 @@ export default function DashboardLayout({ children }) {
     if (cachedSummary) setSummary(cachedSummary);
     hydrateMarketFromCache();
 
-    if (useAuthStore.getState().user) {
+    // If we have a cached user (from login), render dashboard immediately
+    // Don't block on profile sync — it runs in background
+    const cachedUser = useAuthStore.getState().user;
+    if (cachedUser) {
       setAuthChecked(true);
     }
 
+    // Non-blocking profile sync — updates user data in background
     const syncProfile = async () => {
       const timeout = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('profile_timeout')), PROFILE_SYNC_MS);
@@ -165,7 +169,8 @@ export default function DashboardLayout({ children }) {
           console.warn('Profile sync failed, using cached session:', err?.response?.data?.error || err.message);
         }
       } finally {
-        setAuthChecked(true);
+        // Set authChecked for cases where no cached user existed
+        if (!cachedUser) setAuthChecked(true);
       }
     };
     syncProfile();
