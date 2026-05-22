@@ -47,6 +47,7 @@ const navSections = [
       { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
       { href: '/dashboard/market', label: 'Market', icon: Clock },
       { href: '/dashboard/sectors', label: 'Sectors', icon: BarChart3 },
+      { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star },
     ],
   },
   {
@@ -61,7 +62,6 @@ const navSections = [
       { href: '/dashboard/tradebook', label: 'Trade Book', icon: Briefcase },
       { href: '/dashboard/positions', label: 'Positions', icon: Activity },
       { href: '/dashboard/charts', label: 'Charts', icon: BarChart3 },
-      { href: '/dashboard/watchlist', label: 'Watchlist', icon: Star },
       { href: '/dashboard/alerts', label: 'Alerts', icon: BellRing },
       { href: '/dashboard/queued', label: 'Queued', icon: WifiOff },
       { href: '/dashboard/portfolios', label: 'Portfolios', icon: FolderKanban },
@@ -100,6 +100,7 @@ export default function DashboardLayout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [marketOpen, setMarketOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
+  const [collapsedSections, setCollapsedSections] = useState({});
   const pathname = usePathname();
   const router = useRouter();
   const { user, init, setUser, authReady } = useAuthStore();
@@ -424,14 +425,22 @@ export default function DashboardLayout({ children }) {
         )}
 
         <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-2">
-          {visibleNavSections.map((section) => (
-            <div key={section.title} className="mb-4 last:mb-2">
-              <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-groww-muted/80">
-                {section.title}
-              </p>
-              <div className="space-y-0.5">{section.items.map(renderNavLink)}</div>
-            </div>
-          ))}
+          {visibleNavSections.map((section) => {
+            const isCollapsed = collapsedSections[section.title];
+            return (
+              <div key={section.title} className="mb-4 last:mb-2">
+                <button 
+                  type="button"
+                  onClick={() => setCollapsedSections(prev => ({ ...prev, [section.title]: !prev[section.title] }))}
+                  className="flex w-full items-center justify-between mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-groww-muted/80 hover:text-groww-ink transition-colors"
+                >
+                  <span>{section.title}</span>
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} />
+                </button>
+                {!isCollapsed && <div className="space-y-0.5">{section.items.map(renderNavLink)}</div>}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="shrink-0 space-y-0.5 border-t border-groww-border p-3">
