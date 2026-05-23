@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, Fragment } from 'react';
 import { watchlist, market } from '../../../lib/api';
 import { useMarketStore } from '../../../lib/store';
 import { initSocket } from '../../../lib/socket';
@@ -36,6 +36,7 @@ export default function WatchlistPage() {
   const [dragIndex, setDragIndex] = useState(null);
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [popupSymbol, setPopupSymbol] = useState(null);
   const { prices, updatePrice, updatePrices } = useMarketStore();
 
   const canDragReorder = sortBy === 'default' && filterBy === 'all' && lotFilter === 'all';
@@ -577,15 +578,16 @@ export default function WatchlistPage() {
                         const q = getPriceData(sym);
                         const realIndex = selectedWatchlist.symbols.indexOf(sym);
                         return (
-                          <tr
-                            key={sym}
-                            className={`border-b border-gray-100 hover:bg-gray-50 ${dragIndex === realIndex ? 'opacity-50' : ''}`}
-                            draggable={canDragReorder}
-                            onDragStart={() => canDragReorder && setDragIndex(realIndex)}
-                            onDragEnd={() => setDragIndex(null)}
-                            onDragOver={(e) => canDragReorder && e.preventDefault()}
-                            onDrop={() => canDragReorder && dragIndex != null && handleDragDrop(dragIndex, realIndex)}
-                          >
+                          <Fragment key={sym}>
+                            <tr
+                              className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer ${dragIndex === realIndex ? 'opacity-50' : ''}`}
+                              onClick={() => setPopupSymbol(sym)}
+                              draggable={canDragReorder}
+                              onDragStart={() => canDragReorder && setDragIndex(realIndex)}
+                              onDragEnd={() => setDragIndex(null)}
+                              onDragOver={(e) => canDragReorder && e.preventDefault()}
+                              onDrop={() => canDragReorder && dragIndex != null && handleDragDrop(dragIndex, realIndex)}
+                            >
                             {sortBy === 'default' && (
                               <td className="py-2 px-2">
                                 <div className="flex items-center gap-0.5">
@@ -642,25 +644,31 @@ export default function WatchlistPage() {
                             </td>
                             <td className="py-3 px-4 text-right">
                               <div className="flex items-center justify-end gap-2">
-                                <Link
-                                  href={`/dashboard/trade?symbol=${sym}&exchange=NSE&side=BUY`}
-                                  className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
-                                >
-                                  Buy
-                                </Link>
-                                <Link
-                                  href={`/dashboard/trade?symbol=${sym}&exchange=NSE&side=SELL`}
-                                  className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-700"
-                                >
-                                  Sell
-                                </Link>
-                                <button type="button" onClick={() => handleRemoveSymbol(sym)} className="p-1 text-gray-400 hover:text-red-500">
+                                <button type="button" onClick={(e) => { e.stopPropagation(); handleRemoveSymbol(sym); }} className="p-1 text-gray-400 hover:text-red-500">
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
                             </td>
                           </tr>
-                        );
+                          {q && (
+                            <tr className="bg-gray-50/50">
+                              <td colSpan={7} className="px-4 py-2 border-b border-gray-100">
+                                <div className="flex flex-wrap justify-between gap-4 text-xs text-gray-700">
+                                  <div className="flex flex-col"><span className="text-gray-400">Bid Rate</span><span className="font-medium">{q.bid || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Ask Rate</span><span className="font-medium">{q.ask || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">LTP</span><span className="font-medium">{q.ltp || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Change %</span><span className="font-medium">{q.changePercent != null ? `${q.changePercent}%` : '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Net Change</span><span className="font-medium">{q.change || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">High</span><span className="font-medium">{q.high || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Low</span><span className="font-medium">{q.low || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Open</span><span className="font-medium">{q.open || '-'}</span></div>
+                                  <div className="flex flex-col"><span className="text-gray-400">Close</span><span className="font-medium">{q.close || q.previousClose || '-'}</span></div>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
                       })}
                     </tbody>
                   </table>
@@ -680,6 +688,35 @@ export default function WatchlistPage() {
             </div>
           )}
       </div>
+      
+      {/* Buy/Sell Popup Modal */}
+      {popupSymbol && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setPopupSymbol(null)}>
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-gray-800">{popupSymbol}</h3>
+              <button onClick={() => setPopupSymbol(null)} className="text-gray-400 hover:text-gray-600">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <p className="text-gray-600 mb-6">Select an action for {popupSymbol}</p>
+            <div className="flex gap-4">
+              <Link
+                href={`/dashboard/trade?symbol=${popupSymbol}&exchange=NSE&side=BUY`}
+                className="flex-1 rounded-lg bg-emerald-600 py-3 text-center font-bold text-white hover:bg-emerald-700"
+              >
+                BUY
+              </Link>
+              <Link
+                href={`/dashboard/trade?symbol=${popupSymbol}&exchange=NSE&side=SELL`}
+                className="flex-1 rounded-lg bg-red-600 py-3 text-center font-bold text-white hover:bg-red-700"
+              >
+                SELL
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

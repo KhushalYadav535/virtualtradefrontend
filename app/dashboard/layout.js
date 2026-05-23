@@ -103,12 +103,42 @@ export default function DashboardLayout({ children }) {
   const [marketOpen, setMarketOpen] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const [collapsedSections, setCollapsedSections] = useState({});
+  const [hiddenNavItems, setHiddenNavItems] = useState([]);
+  const [showCustomizeModal, setShowCustomizeModal] = useState(false);
+  const [desktopCollapsed, setDesktopCollapsed] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const { user, init, setUser, authReady } = useAuthStore();
   const { summary, setSummary } = usePortfolioStore();
   const [authChecked, setAuthChecked] = useState(false);
   const sessionBootstrapped = useRef(false);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('hiddenNavItems');
+      if (stored) setHiddenNavItems(JSON.parse(stored));
+      const storedCollapse = localStorage.getItem('desktopCollapsed');
+      if (storedCollapse) setDesktopCollapsed(storedCollapse === 'true');
+    } catch (e) {
+      console.warn('Failed to parse hiddenNavItems', e);
+    }
+  }, []);
+
+  const toggleNavItem = (label) => {
+    setHiddenNavItems((prev) => {
+      const next = prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label];
+      localStorage.setItem('hiddenNavItems', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const toggleDesktopSidebar = () => {
+    setDesktopCollapsed(prev => {
+      const next = !prev;
+      localStorage.setItem('desktopCollapsed', next);
+      return next;
+    });
+  };
 
   const refreshPortfolioSummary = async () => {
     const token = localStorage.getItem('token');
@@ -377,7 +407,7 @@ export default function DashboardLayout({ children }) {
       <aside
         className={`fixed inset-y-0 left-0 z-50 flex h-screen w-[248px] flex-col border-r border-groww-border bg-groww-surface shadow-groww transition-transform duration-200 ease-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        } md:translate-x-0`}
+        } ${desktopCollapsed ? 'md:-translate-x-full' : 'md:translate-x-0'}`}
       >
         <div className="flex shrink-0 items-center justify-between px-4 py-4">
           <a
@@ -405,6 +435,9 @@ export default function DashboardLayout({ children }) {
         <nav className="sidebar-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-2">
           {visibleNavSections.map((section) => {
             const isCollapsed = collapsedSections[section.title];
+            const visibleItems = section.items.filter((item) => !hiddenNavItems.includes(item.label));
+            if (visibleItems.length === 0) return null;
+
             return (
               <div key={section.title} className="mb-4 last:mb-2">
                 <button 
@@ -415,13 +448,21 @@ export default function DashboardLayout({ children }) {
                   <span>{section.title}</span>
                   <ChevronRight className={`h-3.5 w-3.5 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} />
                 </button>
-                {!isCollapsed && <div className="space-y-0.5">{section.items.map(renderNavLink)}</div>}
+                {!isCollapsed && <div className="space-y-0.5">{visibleItems.map(renderNavLink)}</div>}
               </div>
             );
           })}
         </nav>
 
         <div className="shrink-0 space-y-0.5 border-t border-groww-border p-3">
+          <button
+            type="button"
+            onClick={() => setShowCustomizeModal(true)}
+            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-groww-muted transition hover:bg-groww-bg hover:text-groww-ink"
+          >
+            <ListOrdered className="h-[18px] w-[18px]" />
+            Customize Menu
+          </button>
           <a
             href="/dashboard/settings"
             onClick={navigateTo('/dashboard/settings')}
@@ -449,7 +490,49 @@ export default function DashboardLayout({ children }) {
         />
       )}
 
-      <main className="flex min-w-0 flex-1 flex-col md:ml-[248px]">
+      {showCustomizeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-groww-ink/50 backdrop-blur-sm p-4">
+          <div className="bg-groww-surface rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-4 border-b border-groww-border flex justify-between items-center bg-white">
+              <h3 className="text-lg font-bold text-groww-ink">Customize Menu</h3>
+              <button onClick={() => setShowCustomizeModal(false)} className="p-1 rounded-lg hover:bg-groww-bg text-groww-muted">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-4 overflow-y-auto space-y-6 flex-1 bg-white">
+              {visibleNavSections.map((section) => (
+                <div key={section.title}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-groww-muted mb-2">{section.title}</h4>
+                  <div className="space-y-2">
+                    {section.items.map((item) => (
+                      <label key={item.label} className="flex items-center gap-3 p-2 rounded-lg hover:bg-groww-bg cursor-pointer transition">
+                        <input
+                          type="checkbox"
+                          checked={!hiddenNavItems.includes(item.label)}
+                          onChange={() => toggleNavItem(item.label)}
+                          className="w-4 h-4 text-groww-primary rounded border-groww-border focus:ring-groww-primary"
+                        />
+                        <item.icon className="w-4 h-4 text-groww-muted" />
+                        <span className="text-sm font-medium text-groww-ink">{item.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="p-4 border-t border-groww-border bg-gray-50 flex justify-end">
+              <button
+                onClick={() => setShowCustomizeModal(false)}
+                className="px-6 py-2 bg-groww-primary text-white rounded-lg font-medium hover:bg-groww-primary-dark transition"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <main className={`flex min-w-0 flex-1 flex-col transition-all duration-200 ease-out ${desktopCollapsed ? 'md:ml-0' : 'md:ml-[248px]'}`}>
         <ConnectionStatusBar />
         <header className="sticky top-0 z-30 flex shrink-0 items-center gap-4 border-b border-groww-border bg-groww-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
           <button
@@ -457,6 +540,15 @@ export default function DashboardLayout({ children }) {
             onClick={() => setSidebarOpen(true)}
             className="rounded-xl p-2 text-groww-ink hover:bg-groww-bg md:hidden"
             aria-label="Open menu"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          
+          <button
+            type="button"
+            onClick={toggleDesktopSidebar}
+            className="hidden md:block rounded-xl p-2 text-groww-ink hover:bg-groww-bg transition"
+            aria-label="Toggle menu"
           >
             <Menu className="h-5 w-5" />
           </button>

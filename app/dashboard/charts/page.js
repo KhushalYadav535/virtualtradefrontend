@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { market } from '../../../lib/api';
 import { createChart } from 'lightweight-charts';
 import { Loader2 } from 'lucide-react';
-import { sanitizeCandles, sanitizeVolume, sanitizeLine, sanitizeLinePoints } from '../../../lib/chartData';
+import { sanitizeCandles, sanitizeVolume, sanitizeLine, sanitizeLinePoints, sanitizeHeikinAshi } from '../../../lib/chartData';
 import StockBrowsePanel from '../../../components/StockBrowsePanel';
 import { useAuthStore } from '../../../lib/store';
 import { getTradingPrefsFromUser } from '../../../lib/tradingPrefs';
@@ -17,7 +17,9 @@ const CHART_THEMES = {
     border: '#334155',
     up: '#22c55e',
     down: '#ef4444',
-    line: '#60a5fa'
+    line: '#60a5fa',
+    areaTop: 'rgba(96, 165, 250, 0.4)',
+    areaBottom: 'rgba(96, 165, 250, 0.0)'
   },
   light: {
     background: '#ffffff',
@@ -26,7 +28,9 @@ const CHART_THEMES = {
     border: '#e0e0e0',
     up: '#22c55e',
     down: '#ef4444',
-    line: '#2563eb'
+    line: '#2563eb',
+    areaTop: 'rgba(37, 99, 235, 0.4)',
+    areaBottom: 'rgba(37, 99, 235, 0.0)'
   }
 };
 
@@ -137,8 +141,8 @@ export default function ChartsPage() {
     chartRef.current = chart;
     indicatorSeriesRef.current = {};
 
-    if (chartType === 'candlestick') {
-      const candlestickSeries = chart.addCandlestickSeries({
+    if (chartType === 'candlestick' || chartType === 'heikinashi') {
+      candlestickSeriesRef.current = chart.addCandlestickSeries({
         upColor: themeColors.up,
         downColor: themeColors.down,
         borderUpColor: themeColors.up,
@@ -146,24 +150,46 @@ export default function ChartsPage() {
         wickUpColor: themeColors.up,
         wickDownColor: themeColors.down,
       });
-      const volumeSeries = chart.addHistogramSeries({
-        color: '#26a69a',
-        priceFormat: { type: 'volume' },
-        priceScaleId: '',
+    } else if (chartType === 'bar') {
+      candlestickSeriesRef.current = chart.addBarSeries({
+        upColor: themeColors.up,
+        downColor: themeColors.down,
       });
-      volumeSeries.priceScale().applyOptions({
-        scaleMargins: { top: 0.8, bottom: 0 },
+    } else if (chartType === 'area') {
+      lineSeriesRef.current = chart.addAreaSeries({
+        lineColor: themeColors.line,
+        topColor: themeColors.areaTop,
+        bottomColor: themeColors.areaBottom,
+        lineWidth: 2,
       });
-      candlestickSeriesRef.current = candlestickSeries;
-      volumeSeriesRef.current = volumeSeries;
-      lineSeriesRef.current = null;
+    } else if (chartType === 'baseline') {
+      lineSeriesRef.current = chart.addBaselineSeries({
+        baseValue: { type: 'price', price: 0 }, // Will update base value dynamically
+        topLineColor: themeColors.up,
+        topFillColor1: 'rgba(34, 197, 94, 0.28)',
+        topFillColor2: 'rgba(34, 197, 94, 0.05)',
+        bottomLineColor: themeColors.down,
+        bottomFillColor1: 'rgba(239, 68, 68, 0.05)',
+        bottomFillColor2: 'rgba(239, 68, 68, 0.28)',
+        lineWidth: 2,
+      });
     } else {
       lineSeriesRef.current = chart.addLineSeries({
         color: themeColors.line,
         lineWidth: 2,
       });
-      candlestickSeriesRef.current = null;
-      volumeSeriesRef.current = null;
+    }
+
+    // Add volume series only for OHLC types
+    if (['candlestick', 'heikinashi', 'bar'].includes(chartType)) {
+      volumeSeriesRef.current = chart.addHistogramSeries({
+        color: '#26a69a',
+        priceFormat: { type: 'volume' },
+        priceScaleId: '',
+      });
+      volumeSeriesRef.current.priceScale().applyOptions({
+        scaleMargins: { top: 0.8, bottom: 0 },
+      });
     }
 
     const handleResize = () => {
@@ -208,13 +234,23 @@ export default function ChartsPage() {
 
       if (!chartRef.current || mode !== chartType) return;
 
-      if (mode === 'candlestick' && candlestickSeriesRef.current) {
-        if (candles.length === 0) return;
-        candlestickSeriesRef.current.setData(candles);
-        volumeSeriesRef.current?.setData(sanitizeVolume(candles));
-      } else if (mode === 'line' && lineSeriesRef.current) {
+      if (['candlestick', 'heikinashi', 'bar'].includes(mode) && candlestickSeriesRef.current) {
+        let chartCandles = candles;
+        if (mode === 'heikinashi') {
+          chartCandles = sanitizeHeikinAshi(histData);
+        }
+        if (chartCandles.length === 0) return;
+        candlestickSeriesRef.current.setData(chartCandles);
+        volumeSeriesRef.current?.setData(sanitizeVolume(candles)); // Actual volume
+      } else if (['line', 'area', 'baseline'].includes(mode) && lineSeriesRef.current) {
         const lineData = sanitizeLine(histData);
         if (lineData.length === 0) return;
+        
+        if (mode === 'baseline') {
+          lineSeriesRef.current.applyOptions({
+            baseValue: { type: 'price', price: lineData[0].value }
+          });
+        }
         lineSeriesRef.current.setData(lineData);
       }
 
@@ -309,22 +345,18 @@ export default function ChartsPage() {
 
                 <div className="flex flex-wrap items-center gap-4 mb-4">
           <div className="flex bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => toggleChartType('candlestick')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                chartType === 'candlestick' ? 'bg-white shadow text-groww-primary' : 'text-gray-600 hover:text-gray-800'
-              }`}
+            <select
+              value={chartType}
+              onChange={(e) => toggleChartType(e.target.value)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-white text-groww-primary border-0 shadow-sm focus:ring-0 cursor-pointer outline-none"
             >
-              Candlestick
-            </button>
-            <button
-              onClick={() => toggleChartType('line')}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-                chartType === 'line' ? 'bg-white shadow text-groww-primary' : 'text-gray-600 hover:text-gray-800'
-              }`}
-            >
-              Line
-            </button>
+              <option value="candlestick">Candlestick</option>
+              <option value="heikinashi">Heikin Ashi</option>
+              <option value="bar">Bar</option>
+              <option value="line">Line</option>
+              <option value="area">Area</option>
+              <option value="baseline">Baseline</option>
+            </select>
           </div>
 
           <div className="flex gap-2">
