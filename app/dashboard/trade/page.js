@@ -12,9 +12,10 @@ import { initSocket, subscribeStock, unsubscribeStock } from '../../../lib/socke
 
 function TradeContent() {
   const searchParams = useSearchParams();
-  const { summary, setSummary } = usePortfolioStore();
-  const { prices } = useMarketStore();
-  const { user } = useAuthStore();
+  const summary = usePortfolioStore((s) => s.summary);
+  const setSummary = usePortfolioStore((s) => s.setSummary);
+  const prices = useMarketStore((s) => s.prices);
+  const user = useAuthStore((s) => s.user);
   const prefs = getTradingPrefsFromUser(user);
 
   const [selected, setSelected] = useState(null);

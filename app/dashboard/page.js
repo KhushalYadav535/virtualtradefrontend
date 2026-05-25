@@ -10,7 +10,7 @@ import { isStaffRole } from '../../lib/roles';
 import MarketCountdown from '../../components/MarketCountdown';
 import {
   TrendingUp, TrendingDown, Wallet, BarChart3, ArrowUp, ArrowDown, Clock,
-  ListOrdered, Star, Activity, Layers, ChevronRight
+  ListOrdered, Star, Activity, Layers, ChevronRight, Briefcase, Trophy
 } from 'lucide-react';
 
 const quickActions = [
@@ -115,88 +115,119 @@ export default function DashboardPage() {
       : 'Market closed';
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-6 animate-fade-in">
       {/* Hero portfolio */}
-      <div className="groww-hero">
-        <p className="text-sm font-medium text-white/80">Current value</p>
-        <p className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">
-          ₹{totalValue.toLocaleString('en-IN')}
-        </p>
-        <div className="mt-4 flex flex-wrap gap-4 text-sm">
-          <div>
-            <p className="text-white/70">Total returns</p>
-            <p className={`font-semibold ${returns >= 0 ? 'text-white' : 'text-red-100'}`}>
-              {returns >= 0 ? '+' : ''}₹{Math.abs(returns).toLocaleString('en-IN')} ({returnsPct?.toFixed(2)}%)
-            </p>
+      <section className="groww-hero p-6 sm:p-8">
+        <div className="absolute inset-0 bg-noise opacity-40 pointer-events-none" />
+        <div className="relative z-10">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Portfolio value</p>
+              <p className="mt-2 text-4xl font-bold tracking-tight tabular-nums sm:text-[44px] sm:leading-[1.05]">
+                ₹{totalValue.toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <div className="mt-3 flex items-center gap-2 text-sm">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 backdrop-blur-sm font-semibold tabular-nums ${
+                  returns >= 0 ? 'bg-white/15 text-white' : 'bg-red-500/20 text-red-50'
+                }`}>
+                  {returns >= 0 ? <ArrowUp className="h-3.5 w-3.5" /> : <ArrowDown className="h-3.5 w-3.5" />}
+                  ₹{Math.abs(returns).toLocaleString('en-IN')}
+                  <span className="opacity-90">({returnsPct >= 0 ? '+' : ''}{Number(returnsPct).toFixed(2)}%)</span>
+                </span>
+                <span className="text-xs font-medium uppercase tracking-wide text-white/60">all time</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 rounded-full bg-white/15 px-3.5 py-1.5 backdrop-blur-md ring-1 ring-white/20 self-start">
+              <span className={`h-2 w-2 rounded-full ${marketStatus?.isOpen ? 'bg-emerald-300 animate-pulse-slow' : marketStatus?.preOpen ? 'bg-amber-300' : 'bg-red-300'}`} />
+              <span className="text-xs font-semibold">{marketLabel}</span>
+              {marketStatus && (
+                <MarketCountdown
+                  isOpen={marketStatus.isOpen}
+                  nextOpen={marketStatus.nextOpen}
+                  nextClose={marketStatus.nextClose}
+                />
+              )}
+            </div>
           </div>
-          <div>
-            <p className="text-white/70">Today&apos;s P&L</p>
-            <p className={`font-semibold ${dayPnL >= 0 ? 'text-white' : 'text-red-100'}`}>
-              {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN')}
-              {' '}
-              <span className="text-white/90">({dayPnLPct >= 0 ? '+' : ''}{dayPnLPct.toFixed(2)}%)</span>
-            </p>
-          </div>
-          <div className="ml-auto flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 backdrop-blur-sm">
-            <Clock className="h-3.5 w-3.5" />
-            <span className="text-xs font-medium">{marketLabel}</span>
-            {marketStatus && (
-              <MarketCountdown
-                isOpen={marketStatus.isOpen}
-                nextOpen={marketStatus.nextOpen}
-                nextClose={marketStatus.nextClose}
-              />
-            )}
+
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-6">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-white/60">Today&apos;s P&L</p>
+              <p className={`mt-1 text-lg font-bold tabular-nums sm:text-xl ${dayPnL >= 0 ? 'text-white' : 'text-red-100'}`}>
+                {dayPnL >= 0 ? '+' : ''}₹{Math.abs(dayPnL).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="mt-0.5 text-xs font-semibold text-white/80 tabular-nums">
+                {dayPnLPct >= 0 ? '+' : ''}{Number(dayPnLPct).toFixed(2)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-white/60">Invested</p>
+              <p className="mt-1 text-lg font-bold tabular-nums sm:text-xl">
+                ₹{Number(investedValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="mt-0.5 text-xs text-white/70">across holdings</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-white/60">Available cash</p>
+              <p className="mt-1 text-lg font-bold tabular-nums sm:text-xl">
+                ₹{Number(summary?.cashBalance || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="mt-0.5 text-xs text-white/70">ready to trade</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-white/60">Holdings value</p>
+              <p className="mt-1 text-lg font-bold tabular-nums sm:text-xl">
+                ₹{Number(summary?.holdingsValue || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
+              </p>
+              <p className="mt-0.5 text-xs text-white/70">current value</p>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Quick actions */}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {quickActions.map((action) => (
           <Link
             key={action.href}
             href={action.href}
-            className="groww-card flex flex-col items-center gap-2 p-4 transition hover:border-groww-primary-muted hover:shadow-groww-lg"
+            className="groww-card group flex items-center gap-3 p-4 hover:-translate-y-0.5 hover:border-groww-primary-muted hover:shadow-groww-md"
           >
-            <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${action.tint}`}>
-              <action.icon className="h-5 w-5" strokeWidth={2} />
+            <div className={`flex h-11 w-11 items-center justify-center rounded-xl transition-transform group-hover:scale-105 ${action.tint}`}>
+              <action.icon className="h-5 w-5" strokeWidth={2.2} />
             </div>
-            <span className="text-xs font-semibold text-groww-ink">{action.label}</span>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold text-groww-ink">{action.label}</span>
+              <span className="text-[11px] text-groww-muted">Tap to open</span>
+            </div>
           </Link>
         ))}
       </div>
 
       {/* Indices strip */}
       {indices.length > 0 && (
-        <div className="flex flex-wrap gap-3 pb-1">
-          {indices.map((idx, i) => (
-            <div key={i} className="groww-card min-w-[160px] shrink-0 p-4">
-              <p className="text-xs font-medium text-groww-muted">{idx.symbol}</p>
-              <p className="mt-1 text-lg font-bold text-groww-ink">
-                ₹{idx.ltp?.toLocaleString('en-IN')}
-              </p>
-              <div
-                className={`mt-1 flex flex-col items-end text-sm font-semibold ${
-                  idx.changePercent >= 0 ? 'text-profit' : 'text-loss'
-                }`}
-              >
-                <span className="inline-flex items-center gap-0.5">
-                  {idx.changePercent >= 0 ? (
-                    <ArrowUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <ArrowDown className="h-3.5 w-3.5" />
-                  )}
-                  {idx.change != null
-                    ? `${idx.change >= 0 ? '+' : ''}₹${Math.abs(idx.change).toFixed(2)}`
-                    : '—'}
-                </span>
-                <span className="text-xs opacity-90">
-                  {idx.changePercent != null ? `${idx.changePercent >= 0 ? '+' : ''}${idx.changePercent.toFixed(2)}%` : ''}
-                </span>
+        <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-none">
+          {indices.map((idx, i) => {
+            const up = (idx.changePercent ?? 0) >= 0;
+            return (
+              <div key={i} className="groww-index-pill">
+                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${up ? 'bg-groww-profit-soft text-groww-profit' : 'bg-groww-loss-soft text-groww-loss'}`}>
+                  {up ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-groww-muted truncate">{idx.symbol}</p>
+                  <p className="text-base font-bold text-groww-ink tabular-nums">
+                    {Number(idx.ltp || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                  </p>
+                  <p className={`text-xs font-semibold tabular-nums ${up ? 'text-profit' : 'text-loss'}`}>
+                    {up ? '+' : ''}{Number(idx.change ?? 0).toFixed(2)}
+                    <span className="opacity-80"> ({up ? '+' : ''}{Number(idx.changePercent ?? 0).toFixed(2)}%)</span>
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -208,19 +239,19 @@ export default function DashboardPage() {
           { label: 'Invested', value: investedValue, icon: TrendingUp, tint: 'bg-violet-50 text-violet-600' },
           { label: 'MIS P&L', value: summary?.positionsPnl, icon: Layers, tint: 'bg-amber-50 text-amber-600', signed: true },
         ].map((stat) => (
-          <div key={stat.label} className="groww-card p-5">
+          <div key={stat.label} className="groww-stat-card">
             <div className="mb-3 flex items-center gap-3">
               <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${stat.tint}`}>
-                <stat.icon className="h-5 w-5" />
+                <stat.icon className="h-5 w-5" strokeWidth={2.2} />
               </div>
-              <span className="text-sm text-groww-muted">{stat.label}</span>
+              <span className="text-sm font-medium text-groww-muted">{stat.label}</span>
             </div>
             <p
-              className={`text-xl font-bold ${
+              className={`text-2xl font-bold tracking-tight tabular-nums ${
                 stat.signed && stat.value < 0 ? 'text-loss' : stat.signed && stat.value > 0 ? 'text-profit' : 'text-groww-ink'
               }`}
             >
-              {stat.signed && stat.value > 0 ? '+' : ''}₹{Number(stat.value || 0).toLocaleString('en-IN')}
+              {stat.signed && stat.value > 0 ? '+' : ''}₹{Number(stat.value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}
             </p>
           </div>
         ))}
@@ -239,17 +270,27 @@ export default function DashboardPage() {
               {summary.intradayPositions.slice(0, 4).map((p) => (
                 <div
                   key={p.symbol}
-                  className="flex justify-between rounded-xl bg-groww-bg px-3 py-2.5 text-sm"
+                  className="flex items-center justify-between rounded-xl bg-groww-bg-soft px-3.5 py-3 text-sm transition hover:bg-groww-primary-soft"
                 >
-                  <span className="font-semibold text-groww-ink">{p.symbol}</span>
-                  <span className={p.pnl >= 0 ? 'text-profit font-medium' : 'text-loss font-medium'}>
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-groww-surface text-xs font-bold text-groww-primary border border-groww-border">
+                      {p.symbol?.charAt(0)}
+                    </span>
+                    <span className="font-semibold text-groww-ink">{p.symbol}</span>
+                  </div>
+                  <span className={`tabular-nums font-semibold ${p.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     {(p.pnl >= 0 ? '+' : '')}₹{Number(p.pnl || 0).toLocaleString('en-IN')}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="py-8 text-center text-sm text-groww-muted">No open intraday positions</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-groww-bg">
+                <Activity className="h-5 w-5 text-groww-muted" />
+              </div>
+              <p className="text-sm text-groww-muted">No open intraday positions</p>
+            </div>
           )}
         </div>
 
@@ -267,22 +308,30 @@ export default function DashboardPage() {
                   const colors = ['bg-groww-primary', 'bg-emerald-500', 'bg-amber-500'];
                   return (
                     <div key={i}>
-                      <div className="mb-1 flex justify-between text-sm">
-                        <span className="font-semibold text-groww-ink">{h.symbol}</span>
-                        <span className="text-groww-muted">{pct.toFixed(1)}%</span>
+                      <div className="mb-1.5 flex items-center justify-between text-sm">
+                        <span className="font-bold text-groww-ink">{h.symbol}</span>
+                        <span className="text-groww-muted tabular-nums">{pct.toFixed(1)}%</span>
                       </div>
-                      <div className="h-2 w-full overflow-hidden rounded-full bg-groww-bg">
-                        <div className={`h-full rounded-full ${colors[i]}`} style={{ width: `${pct}%` }} />
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-groww-border/60">
+                        <div
+                          className={`h-full rounded-full ${colors[i]} transition-all duration-500`}
+                          style={{ width: `${pct}%` }}
+                        />
                       </div>
                     </div>
                   );
                 })}
               <Link href="/dashboard/portfolio" className="groww-link mt-2 block text-center">
-                View Full Breakdown
+                View Full Breakdown →
               </Link>
             </div>
           ) : (
-            <p className="py-8 text-center text-sm text-groww-muted">No analytics available</p>
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-groww-bg">
+                <BarChart3 className="h-5 w-5 text-groww-muted" />
+              </div>
+              <p className="text-sm text-groww-muted">No analytics available</p>
+            </div>
           )}
         </div>
 
@@ -295,56 +344,70 @@ export default function DashboardPage() {
           </div>
           <div className="space-y-2">
             {summary?.holdings?.slice(0, 5).map((h, i) => (
-              <div key={i} className="flex justify-between rounded-xl bg-groww-bg px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-semibold text-groww-ink">{h.symbol}</p>
-                  <p className="text-xs text-groww-muted">
-                    {h.qty} @ ₹{h.avgBuyPrice?.toFixed(2)}
-                  </p>
+              <div key={i} className="flex items-center justify-between rounded-xl bg-groww-bg-soft px-3.5 py-3 transition hover:bg-groww-primary-soft">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-groww-surface text-xs font-bold text-groww-primary border border-groww-border">
+                    {h.symbol?.charAt(0)}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-groww-ink truncate">{h.symbol}</p>
+                    <p className="text-[11px] text-groww-muted tabular-nums">
+                      {h.qty} @ ₹{h.avgBuyPrice?.toFixed(2)}
+                    </p>
+                  </div>
                 </div>
                 <div className="text-right">
-                  <p className="text-sm font-semibold text-groww-ink">
+                  <p className="text-sm font-bold text-groww-ink tabular-nums">
                     ₹{h.currentValue?.toLocaleString('en-IN')}
                   </p>
-                  <p className={`text-xs font-medium ${h.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  <p className={`text-[11px] font-semibold tabular-nums ${h.pnl >= 0 ? 'text-profit' : 'text-loss'}`}>
                     {h.pnl >= 0 ? '+' : ''}₹{h.pnl?.toFixed(2)}
                   </p>
                 </div>
               </div>
             ))}
             {(!summary?.holdings || summary.holdings.length === 0) && (
-              <p className="py-8 text-center text-sm text-groww-muted">No holdings yet</p>
+              <div className="flex flex-col items-center justify-center py-10 text-center">
+                <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-groww-bg">
+                  <Briefcase className="h-5 w-5 text-groww-muted" />
+                </div>
+                <p className="text-sm text-groww-muted">No holdings yet</p>
+                <Link href="/dashboard/trade" className="groww-link mt-2">Start trading →</Link>
+              </div>
             )}
           </div>
         </div>
 
         <div className="groww-card p-5 lg:col-span-1">
           <div className="mb-4 flex items-center justify-between">
-            <h2 className="groww-section-title">Leaderboard</h2>
+            <div className="flex items-center gap-2">
+              <Trophy className="h-5 w-5 text-amber-500" />
+              <h2 className="groww-section-title">Leaderboard</h2>
+            </div>
             <button type="button" onClick={() => router.push('/dashboard/leaderboard')} className="groww-link">
               View all
             </button>
           </div>
           <div className="space-y-2">
             {topLeaderboard.map((u, i) => (
-              <div key={i} className="flex items-center justify-between rounded-xl bg-groww-bg px-3 py-2.5">
-                <div className="flex items-center gap-2.5">
+              <div key={i} className="flex items-center justify-between rounded-xl bg-groww-bg-soft px-3.5 py-3 transition hover:bg-groww-primary-soft">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${
+                    className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
                       i === 0
-                        ? 'bg-amber-400 text-white'
+                        ? 'bg-gradient-to-br from-amber-300 to-amber-500 text-white shadow-sm'
                         : i === 1
-                          ? 'bg-gray-300 text-groww-ink'
+                          ? 'bg-gradient-to-br from-gray-200 to-gray-400 text-gray-700'
                           : i === 2
-                            ? 'bg-amber-600/80 text-white'
-                            : 'bg-groww-border text-groww-muted'
+                            ? 'bg-gradient-to-br from-amber-600 to-amber-700 text-white'
+                            : 'bg-groww-bg text-groww-muted'
                     }`}
                   >
                     {i + 1}
                   </span>
-                  <span className="text-sm font-medium text-groww-ink">{u.name}</span>
+                  <span className="text-sm font-medium text-groww-ink truncate">{u.name}</span>
                 </div>
-                <p className={`text-sm font-semibold ${u.totalReturns >= 0 ? 'text-profit' : 'text-loss'}`}>
+                <p className={`text-sm font-bold tabular-nums ${u.totalReturns >= 0 ? 'text-profit' : 'text-loss'}`}>
                   {u.totalReturns >= 0 ? '+' : ''}₹{u.totalReturns?.toFixed(0)}
                 </p>
               </div>

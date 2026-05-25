@@ -1,17 +1,20 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, Fragment } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, Fragment } from 'react';
 import { watchlist, market } from '../../../lib/api';
 import { useMarketStore } from '../../../lib/store';
+import { useConnectionStore } from '../../../lib/connectionStore';
 import { initSocket } from '../../../lib/socket';
 import { getPollIntervalMs } from '../../../lib/pollInterval';
 import { mergeTradingPrefs } from '../../../lib/tradingPrefs';
+import { loadCachedWatchlists, saveWatchlistsCache } from '../../../lib/portfolioCache';
 import Link from 'next/link';
 import {
   Star, Plus, Trash2, Loader2, TrendingUp, TrendingDown, Pencil,
   Share2, ChevronUp, ChevronDown, Copy, Check, GripVertical, RefreshCw, Cloud
 } from 'lucide-react';
 import WatchlistSymbolSearch from '../../../components/WatchlistSymbolSearch';
+import WatchlistQuickTrade from '../../../components/WatchlistQuickTrade';
 
 export default function WatchlistPage() {
   const [watchlists, setWatchlists] = useState([]);
@@ -37,7 +40,10 @@ export default function WatchlistPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [popupSymbol, setPopupSymbol] = useState(null);
-  const { prices, updatePrice, updatePrices } = useMarketStore();
+  const updatePrice = useMarketStore((s) => s.updatePrice);
+  const updatePrices = useMarketStore((s) => s.updatePrices);
+  const prices = useMarketStore((s) => s.prices);
+  const socketStatus = useConnectionStore((s) => s.socketStatus);
 
   const canDragReorder = sortBy === 'default' && filterBy === 'all' && lotFilter === 'all';
 
@@ -47,44 +53,46 @@ export default function WatchlistPage() {
   };
 
   useEffect(() => {
+    const cached = loadCachedWatchlists();
+    if (cached?.length) {
+      setWatchlists(cached);
+      setSelectedWatchlist(cached[0]);
+      setLoading(false);
+    }
     loadWatchlists();
     watchlist.getTemplates().then(({ data }) => setTemplates(data || [])).catch(() => {});
-    const socket = initSocket();
-    const onPrices = (data) => {
-      const quotes = data?.quotes;
-      if (Array.isArray(quotes) && quotes.length) {
-        useMarketStore.getState().updatePrices(quotes);
-      }
-    };
-    socket?.on('priceUpdate', onPrices);
-    socket?.on('indexUpdate', onPrices);
-    return () => {
-      socket?.off('priceUpdate', onPrices);
-      socket?.off('indexUpdate', onPrices);
-    };
+    initSocket();
   }, []);
 
   useEffect(() => {
     const syms = selectedWatchlist?.symbols;
     if (!syms?.length) return;
+    let cancelled = false;
     const loadBatch = async () => {
+      if (cancelled) return;
       try {
         const { data } = await market.getQuotes(syms);
-        if (Array.isArray(data) && data.length) updatePrices(data);
+        if (!cancelled && Array.isArray(data) && data.length) updatePrices(data);
       } catch {
-        syms.forEach((sym) => loadQuote(sym));
+        if (!cancelled) syms.forEach((sym) => loadQuote(sym));
       }
     };
     loadBatch();
     const prefs = mergeTradingPrefs(JSON.parse(localStorage.getItem('tradingPrefs') || 'null'));
-    const t = setInterval(loadBatch, getPollIntervalMs(prefs, navigator.onLine));
-    return () => clearInterval(t);
-  }, [selectedWatchlist?.id, selectedWatchlist?.symbols?.join(',')]);
+    const baseMs = getPollIntervalMs(prefs, navigator.onLine);
+    const intervalMs = socketStatus === 'connected' ? Math.max(60_000, baseMs * 4) : baseMs;
+    const t = setInterval(loadBatch, intervalMs);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [selectedWatchlist?.id, selectedWatchlist?.symbols?.join(','), socketStatus]);
 
   const loadWatchlists = async () => {
     try {
       const { data } = await watchlist.getAll();
       setWatchlists(data);
+      saveWatchlistsCache(data);
       if (data.length > 0) {
         setSelectedWatchlist((prev) => data.find((w) => w.id === prev?.id) || data[0]);
       } else {
@@ -650,7 +658,18 @@ export default function WatchlistPage() {
                               </div>
                             </td>
                           </tr>
-                          {q && (
+                          {popupSymbol === sym ? (
+                            <tr>
+                              <td colSpan={7} className="px-3 py-3 bg-groww-bg-soft border-b border-groww-border">
+                                <WatchlistQuickTrade
+                                  symbol={sym}
+                                  quote={q}
+                                  onClose={() => setPopupSymbol(null)}
+                                  onPlaced={() => showToast('Order placed')}
+                                />
+                              </td>
+                            </tr>
+                          ) : q && (
                             <tr className="bg-gray-50/50">
                               <td colSpan={7} className="px-4 py-2 border-b border-gray-100">
                                 <div className="flex flex-wrap justify-between gap-4 text-xs text-gray-700">
@@ -690,30 +709,15 @@ export default function WatchlistPage() {
       </div>
       
       {/* Buy/Sell Popup Modal */}
-      {popupSymbol && (
+      {popupSymbol && !sortedSymbols?.includes(popupSymbol) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setPopupSymbol(null)}>
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-xl font-bold text-gray-800">{popupSymbol}</h3>
-              <button onClick={() => setPopupSymbol(null)} className="text-gray-400 hover:text-gray-600">
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-            <p className="text-gray-600 mb-6">Select an action for {popupSymbol}</p>
-            <div className="flex gap-4">
-              <Link
-                href={`/dashboard/trade?symbol=${popupSymbol}&exchange=NSE&side=BUY`}
-                className="flex-1 rounded-lg bg-emerald-600 py-3 text-center font-bold text-white hover:bg-emerald-700"
-              >
-                BUY
-              </Link>
-              <Link
-                href={`/dashboard/trade?symbol=${popupSymbol}&exchange=NSE&side=SELL`}
-                className="flex-1 rounded-lg bg-red-600 py-3 text-center font-bold text-white hover:bg-red-700"
-              >
-                SELL
-              </Link>
-            </div>
+          <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
+            <WatchlistQuickTrade
+              symbol={popupSymbol}
+              quote={getPriceData(popupSymbol)}
+              onClose={() => setPopupSymbol(null)}
+              onPlaced={() => showToast('Order placed')}
+            />
           </div>
         </div>
       )}

@@ -3,21 +3,36 @@
 @tailwind utilities;
 
 :root {
-  --groww-bg: #f6f7f9;
+  --groww-bg: #f5f7fa;
+  --groww-bg-soft: #fafbfc;
   --groww-surface: #ffffff;
+  --groww-surface-2: #f9fafb;
   --groww-primary: #00b386;
   --groww-primary-hover: #009973;
+  --groww-primary-darker: #007a5c;
   --groww-primary-light: #e6f7f2;
+  --groww-primary-soft: #f0faf6;
   --groww-primary-muted: #b8ebe0;
-  --groww-ink: #44475b;
-  --groww-ink-secondary: #7c7e8c;
-  --groww-border: #ebedf0;
+  --groww-ink: #1a1d29;
+  --groww-ink-secondary: #44475b;
+  --groww-muted: #7c7e8c;
+  --groww-muted-soft: #a3a5b3;
+  --groww-border: #eef0f3;
+  --groww-border-strong: #dadde2;
   --groww-profit: #00b386;
+  --groww-profit-soft: #e6f7f2;
   --groww-loss: #eb4b4b;
-  --groww-shadow: 0 1px 3px rgba(68, 71, 91, 0.06), 0 4px 12px rgba(68, 71, 91, 0.04);
-  --groww-shadow-lg: 0 4px 24px rgba(68, 71, 91, 0.08);
+  --groww-loss-soft: #fdecec;
+  --groww-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --groww-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 2px 8px rgba(15, 23, 42, 0.04);
+  --groww-shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 24px rgba(15, 23, 42, 0.06);
+  --groww-shadow-lg: 0 4px 12px rgba(15, 23, 42, 0.06), 0 20px 40px rgba(15, 23, 42, 0.08);
   --foreground: var(--groww-ink);
   --background: var(--groww-bg);
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -25,26 +40,57 @@ body {
   background: var(--background);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.005em;
+}
+
+/* Tabular numerals for prices and stats */
+.tabular-nums,
+[data-num] {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
 }
 
 @layer utilities {
-  .text-profit {
-    color: var(--groww-profit);
+  .text-profit { color: var(--groww-profit); }
+  .text-loss { color: var(--groww-loss); }
+  .bg-profit { background-color: var(--groww-profit); }
+  .bg-loss { background-color: var(--groww-loss); }
+  .bg-profit-soft { background-color: var(--groww-profit-soft); }
+  .bg-loss-soft { background-color: var(--groww-loss-soft); }
+
+  /* Subtle grain noise overlay for hero card depth */
+  .bg-noise {
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.04 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
-  .text-loss {
-    color: var(--groww-loss);
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
   }
-  .bg-profit {
-    background-color: var(--groww-profit);
-  }
-  .bg-loss {
-    background-color: var(--groww-loss);
+  .scrollbar-thin::-webkit-scrollbar { width: 5px; height: 5px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background-color: #d1d5db; border-radius: 9999px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover { background-color: #9ca3af; }
+
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Skeleton shimmer */
+  .skeleton {
+    background: linear-gradient(110deg, #eef0f3 8%, #f7f8fa 18%, #eef0f3 33%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s linear infinite;
   }
 }
 
 @layer components {
   .groww-card {
     @apply rounded-2xl border border-groww-border bg-groww-surface;
+    box-shadow: var(--groww-shadow-xs);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+  }
+  .groww-card:hover {
     box-shadow: var(--groww-shadow);
   }
 
@@ -52,54 +98,105 @@ body {
     @apply rounded-2xl border border-groww-border bg-groww-surface;
   }
 
+  .groww-card-elevated {
+    @apply rounded-2xl border border-groww-border bg-groww-surface;
+    box-shadow: var(--groww-shadow-md);
+  }
+
   .groww-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-groww-primary px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-groww-primary-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-groww-primary focus-visible:ring-offset-2 disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-groww-primary px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-groww-primary-dark hover:shadow-groww-md active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-groww-primary focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none;
   }
 
   .groww-btn-secondary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-groww-border bg-groww-surface px-5 py-2.5 text-sm font-semibold text-groww-ink transition-colors hover:bg-groww-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-groww-primary/30 focus-visible:ring-offset-2;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-groww-border bg-groww-surface px-5 py-2.5 text-sm font-semibold text-groww-ink transition-all hover:bg-groww-bg hover:border-groww-border-strong active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-groww-primary/30 focus-visible:ring-offset-2;
+  }
+
+  .groww-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-groww-ink transition-colors hover:bg-groww-bg active:bg-groww-border;
   }
 
   .groww-input {
-    @apply w-full rounded-xl border border-groww-border bg-groww-surface px-4 py-3 text-sm text-groww-ink placeholder:text-groww-muted outline-none transition focus:border-groww-primary focus:ring-2 focus:ring-groww-primary/20;
+    @apply w-full rounded-xl border border-groww-border bg-groww-surface px-4 py-3 text-sm text-groww-ink placeholder:text-groww-muted outline-none transition focus:border-groww-primary focus:ring-2 focus:ring-groww-primary/15;
   }
 
   .groww-chip {
-    @apply rounded-full px-3 py-1 text-xs font-medium transition;
+    @apply rounded-full px-3 py-1.5 text-xs font-semibold transition-all;
   }
 
   .groww-chip-active {
-    @apply groww-chip bg-groww-primary text-white;
+    @apply groww-chip bg-groww-primary text-white shadow-groww-xs;
   }
 
   .groww-chip-inactive {
-    @apply groww-chip bg-groww-bg text-groww-muted hover:bg-groww-primary-light hover:text-groww-primary;
+    @apply groww-chip bg-groww-surface border border-groww-border text-groww-muted hover:border-groww-primary/40 hover:text-groww-primary hover:bg-groww-primary-soft;
   }
 
   .groww-section-title {
-    @apply text-base font-semibold text-groww-ink;
+    @apply text-base font-bold text-groww-ink tracking-tight;
   }
 
   .groww-link {
-    @apply text-sm font-medium text-groww-primary hover:text-groww-primary-dark;
+    @apply text-sm font-semibold text-groww-primary hover:text-groww-primary-dark transition-colors;
   }
 
   .groww-hero {
-    @apply relative overflow-hidden rounded-2xl p-6 text-white;
-    background: linear-gradient(135deg, #00b386 0%, #00d4a4 45%, #00a077 100%);
-    box-shadow: var(--groww-shadow-lg);
+    @apply relative overflow-hidden rounded-2xl text-white;
+    background:
+      radial-gradient(circle at 88% -10%, rgba(255, 255, 255, 0.18) 0%, transparent 35%),
+      radial-gradient(circle at 0% 110%, rgba(255, 255, 255, 0.12) 0%, transparent 40%),
+      linear-gradient(135deg, #00d4a4 0%, #00b386 45%, #007a5c 100%);
+    box-shadow: 0 8px 32px rgba(0, 122, 92, 0.25), 0 2px 8px rgba(0, 122, 92, 0.15);
   }
 
   .groww-stock-row {
-    @apply flex w-full items-center justify-between gap-3 border-b border-groww-border/60 px-4 py-3 text-left transition hover:bg-groww-primary-light/40;
+    @apply flex w-full items-center justify-between gap-3 border-b border-groww-border/60 px-4 py-3 text-left transition hover:bg-groww-primary-soft/60;
   }
 
   .groww-stock-row-active {
-    @apply groww-stock-row border-l-[3px] border-l-groww-primary bg-groww-primary-light/60;
+    @apply groww-stock-row border-l-[3px] border-l-groww-primary bg-groww-primary-soft;
   }
 
   .groww-spinner {
-    @apply h-8 w-8 animate-spin rounded-full border-[3px] border-groww-primary/25 border-t-groww-primary;
+    @apply h-8 w-8 animate-spin rounded-full border-[3px] border-groww-primary/20 border-t-groww-primary;
+  }
+
+  .groww-tag {
+    @apply inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide;
+  }
+
+  .groww-tag-profit {
+    @apply groww-tag bg-groww-profit-soft text-groww-primary;
+  }
+
+  .groww-tag-loss {
+    @apply groww-tag bg-groww-loss-soft text-groww-loss;
+  }
+
+  .groww-tag-neutral {
+    @apply groww-tag bg-groww-bg text-groww-muted;
+  }
+
+  .groww-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium;
+  }
+
+  .groww-divider {
+    @apply h-px w-full bg-groww-border;
+  }
+
+  /* Stat card with hover lift */
+  .groww-stat-card {
+    @apply groww-card p-5 transition-all duration-200;
+  }
+  .groww-stat-card:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--groww-shadow-md);
+  }
+
+  /* Index card pill */
+  .groww-index-pill {
+    @apply groww-card flex shrink-0 items-center gap-3 rounded-2xl px-4 py-3 transition-all hover:border-groww-primary-muted;
+    min-width: 180px;
   }
 }
 

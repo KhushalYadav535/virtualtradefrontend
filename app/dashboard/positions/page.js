@@ -9,7 +9,8 @@ import { initSocket } from '../../../lib/socket';
 
 export default function PositionsPage() {
   const setSummary = usePortfolioStore((s) => s.setSummary);
-  const { prices, updatePrices } = useMarketStore();
+  const prices = useMarketStore((s) => s.prices);
+  const updatePrices = useMarketStore((s) => s.updatePrices);
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);

@@ -13,7 +13,7 @@ import { initSocket, disconnectSocket } from '../../lib/socket';
 import { clearAuthSession } from '../../lib/authSession';
 import {
   market, auth, portfolio, notifications as notificationsApi, system, offline as offlineApi,
-  portfoliosMgmt, waitForBackend, isApiTimeout
+  portfoliosMgmt, waitForBackend, isApiTimeout, isRetryableNetworkError
 } from '../../lib/api';
 import ConnectionStatusBar from '../../components/ConnectionStatusBar';
 import { useConnectionStore } from '../../lib/connectionStore';
@@ -144,24 +144,32 @@ export default function DashboardLayout({ children }) {
     const token = localStorage.getItem('token');
     if (!token) return;
     const conn = useConnectionStore.getState();
-    conn.setBackendWaking(true);
     try {
-      const awake = await waitForBackend(10000);
-      if (!awake) {
-        conn.setApiReachable(false);
-        return;
-      }
       const { data } = await portfolio.getSummary();
       setSummary(data);
       savePortfolioSummaryCache(data);
       conn.setApiReachable(true);
     } catch (err) {
-      if (!isApiTimeout(err)) {
+      if (isRetryableNetworkError(err) || err?.response?.status >= 500) {
+        conn.setBackendWaking(true);
+        const awake = await waitForBackend(4000);
+        if (awake) {
+          try {
+            const { data } = await portfolio.getSummary();
+            setSummary(data);
+            savePortfolioSummaryCache(data);
+            conn.setApiReachable(true);
+            conn.setBackendWaking(false);
+            return;
+          } catch (e2) {
+            console.warn('Portfolio refresh:', e2?.response?.data?.error || e2.message);
+          }
+        }
+        conn.setApiReachable(false);
+        conn.setBackendWaking(false);
+      } else if (!isApiTimeout(err)) {
         console.warn('Portfolio refresh:', err?.response?.data?.error || err.message);
       }
-      useConnectionStore.getState().setApiReachable(false);
-    } finally {
-      useConnectionStore.getState().setBackendWaking(false);
     }
   };
 
@@ -362,10 +370,10 @@ export default function DashboardLayout({ children }) {
   };
 
   const navLinkClass = (isActive) =>
-    `group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+    `group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-150 ${
       isActive
-        ? 'bg-groww-primary-light text-groww-primary'
-        : 'text-groww-muted hover:bg-groww-bg hover:text-groww-ink'
+        ? 'bg-groww-primary-soft text-groww-primary shadow-groww-xs'
+        : 'text-groww-muted hover:bg-groww-bg-soft hover:text-groww-ink'
     }`;
 
   const renderNavLink = (item) => {
@@ -378,10 +386,14 @@ export default function DashboardLayout({ children }) {
         onClick={navigateTo(item.href)}
         className={navLinkClass(isActive)}
       >
+        {isActive && (
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-[3px] rounded-r-full bg-groww-primary" />
+        )}
         <Icon
-          className={`h-[18px] w-[18px] shrink-0 ${
-            isActive ? 'text-groww-primary' : 'text-groww-muted group-hover:text-groww-ink'
+          className={`h-[18px] w-[18px] shrink-0 transition-transform ${
+            isActive ? 'text-groww-primary scale-105' : 'text-groww-muted group-hover:text-groww-ink'
           }`}
+          strokeWidth={isActive ? 2.4 : 2}
         />
         <span className="truncate">{navLabel(item.label, locale)}</span>
         {isActive && <ChevronRight className="ml-auto h-4 w-4 opacity-50" />}
@@ -413,9 +425,9 @@ export default function DashboardLayout({ children }) {
           <a
             href={homePath}
             onClick={navigateTo(homePath)}
-            className="flex min-w-0 items-center gap-2.5"
+            className="flex min-w-0 items-center gap-2.5 group"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-groww-primary shadow-sm">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-groww-primary to-groww-primary-darker shadow-groww-glow transition-transform group-hover:scale-105">
               <TrendingUp className="h-4 w-4 text-white" strokeWidth={2.5} />
             </div>
             <span className="truncate text-lg font-bold tracking-tight text-groww-ink">VirtualTrade</span>
@@ -534,34 +546,40 @@ export default function DashboardLayout({ children }) {
 
       <main className={`flex min-w-0 flex-1 flex-col transition-all duration-200 ease-out ${desktopCollapsed ? 'md:ml-0' : 'md:ml-[248px]'}`}>
         <ConnectionStatusBar />
-        <header className="sticky top-0 z-30 flex shrink-0 items-center gap-4 border-b border-groww-border bg-groww-surface/95 px-4 py-3 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-30 flex shrink-0 items-center gap-4 border-b border-groww-border bg-groww-surface/85 px-4 py-3 backdrop-blur-xl sm:px-6">
           <button
             type="button"
             onClick={() => setSidebarOpen(true)}
-            className="rounded-xl p-2 text-groww-ink hover:bg-groww-bg md:hidden"
+            className="rounded-xl p-2 text-groww-ink hover:bg-groww-bg-soft md:hidden"
             aria-label="Open menu"
           >
             <Menu className="h-5 w-5" />
           </button>
-          
+
           <button
             type="button"
             onClick={toggleDesktopSidebar}
-            className="hidden md:block rounded-xl p-2 text-groww-ink hover:bg-groww-bg transition"
+            className="hidden md:block rounded-xl p-2 text-groww-ink hover:bg-groww-bg-soft transition"
             aria-label="Toggle menu"
           >
             <Menu className="h-5 w-5" />
           </button>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-lg font-semibold text-groww-ink">{pageTitle(pathname)}</h1>
+            <h1 className="truncate text-lg font-bold tracking-tight text-groww-ink">{pageTitle(pathname)}</h1>
             {!isStaff && summary && (
               <p className="hidden text-xs text-groww-muted sm:block">
                 Total returns{' '}
-                <span className={returnsPct >= 0 ? 'text-profit' : 'text-loss'}>
+                <span className={`tabular-nums font-semibold ${returnsPct >= 0 ? 'text-profit' : 'text-loss'}`}>
                   {returnsPct >= 0 ? '+' : ''}
                   {Number(returnsPct).toFixed(2)}%
                 </span>
+                {marketOpen && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium text-groww-primary">
+                    <span className="h-1.5 w-1.5 rounded-full bg-groww-primary animate-pulse-slow" />
+                    Live
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -571,24 +589,24 @@ export default function DashboardLayout({ children }) {
               <a
                 href="/dashboard/notifications"
                 onClick={navigateTo('/dashboard/notifications')}
-                className="relative rounded-xl p-2.5 text-groww-ink transition hover:bg-groww-bg"
+                className="relative rounded-xl p-2.5 text-groww-ink transition hover:bg-groww-bg-soft"
                 aria-label="Notifications"
               >
                 <Bell className="h-5 w-5" />
                 {unreadNotifications > 0 && (
-                  <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-groww-loss px-1 text-[10px] font-bold text-white">
+                  <span className="absolute right-1 top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-groww-loss px-1 text-[10px] font-bold text-white shadow-sm ring-2 ring-groww-surface">
                     {unreadNotifications > 9 ? '9+' : unreadNotifications}
                   </span>
                 )}
               </a>
             )}
             <div className="hidden h-8 w-px bg-groww-border sm:block" />
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-groww-primary-light text-sm font-bold text-groww-primary">
+            <div className="flex items-center gap-2.5 rounded-full border border-transparent hover:border-groww-border hover:bg-groww-bg-soft transition px-2 py-1 -mr-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-groww-primary-light to-groww-primary-muted text-sm font-bold text-groww-primary shadow-groww-xs">
                 {(user?.name || 'U').charAt(0).toUpperCase()}
               </div>
-              <div className="hidden text-right sm:block">
-                <p className="max-w-[120px] truncate text-sm font-medium text-groww-ink">{user?.name}</p>
+              <div className="hidden text-right sm:block pr-2">
+                <p className="max-w-[120px] truncate text-sm font-semibold text-groww-ink">{user?.name}</p>
                 <p className="text-xs capitalize text-groww-muted">{user?.role}</p>
               </div>
             </div>
